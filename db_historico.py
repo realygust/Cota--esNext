@@ -37,7 +37,9 @@ def get_connection():
         conn = psycopg2.connect(config["url"])
         return conn
     else:
-        os.makedirs(os.path.dirname(config["path"]), exist_ok=True)
+       diretorio = os.path.dirname(config["path"])
+if diretorio:
+    os.makedirs(diretorio, exist_ok=True)
         conn = sqlite3.connect(config["path"], check_same_thread=False)
         conn.row_factory = sqlite3.Row
         return conn
