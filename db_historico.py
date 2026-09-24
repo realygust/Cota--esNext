@@ -40,9 +40,9 @@ def get_connection():
         diretorio = os.path.dirname(config["path"])
         if diretorio:
             os.makedirs(diretorio, exist_ok=True)
-            conn = sqlite3.connect(config["path"], check_same_thread=False)
-            conn.row_factory = sqlite3.Row
-            return conn
+        conn = sqlite3.connect(config["path"], check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        return conn
 
 def execute_query(query, params=None, fetch=False, fetchone=False, commit=True):
     config = get_db_config()
