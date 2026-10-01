@@ -1,4 +1,4 @@
-﻿
+
 # ================= IMPORTAÇÕES REFATORADAS =================
 import utils
 import api_services
@@ -95,6 +95,9 @@ def check_auth():
     if "user" not in st.session_state:
         st.session_state.user = None
 
+    if "cookie_init_done" not in st.session_state:
+        st.session_state.cookie_init_done = False
+
     cookie_controller = CookieController() if CookieController else None
     
     # Tentativa de login automático via cookie
@@ -106,6 +109,12 @@ def check_auth():
                 st.session_state.user = user_db
             else:
                 cookie_controller.remove('nextcable_session_token')
+        else:
+            if not st.session_state.cookie_init_done:
+                st.session_state.cookie_init_done = True
+                # Pausa a execução no primeiro render para evitar o flash da tela de login.
+                # O componente CookieController enviará os cookies do cliente e acionará um rerun automático.
+                st.stop()
 
     has_oidc = "auth" in st.secrets
 
@@ -130,136 +139,143 @@ def check_auth():
                 st.stop()
     else:
         if not st.session_state.user:
-            st.markdown("""
-            <style>
-            [data-testid="stSidebar"] { display: none !important; }
-            [data-testid="stHeader"] { display: none !important; }
-            
-            .block-container {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                min-height: 90vh;
-                padding-top: 2rem !important;
-            }
-            
-            div[data-testid="stVerticalBlockBorderWrapper"] {
-                background: #ffffff !important;
-                border: 1px solid #e2e8f0 !important;
-                border-radius: 12px !important;
-                padding: 10px 20px 20px 20px !important;
-                box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025) !important;
-                width: 100% !important;
-                max-width: 400px !important;
-                margin: auto !important;
-            }
-            
-            div[data-testid="stForm"] {
-                border: none !important;
-                padding: 0 !important;
-            }
-            
-            .logo-text {
-                font-size: 1.4rem;
-                font-weight: 800;
-                color: #0f172a;
-                text-align: center;
-                margin-top: 15px;
-                margin-bottom: 2px;
-                letter-spacing: -0.02em;
-            }
-            .sub-text {
-                font-size: 0.85rem;
-                color: #64748b;
-                text-align: center;
-                margin-bottom: 25px;
-                font-weight: 600;
-            }
-            
-            div[data-testid="stFormSubmitButton"] > button {
-                background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
-                color: #ffffff !important;
-                border: none !important;
-                border-radius: 8px !important;
-                font-weight: 700 !important;
-                height: 46px !important;
-                margin-top: 10px !important;
-                box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2) !important;
-                transition: all 0.2s ease !important;
-                letter-spacing: 0.03em !important;
-            }
-            div[data-testid="stFormSubmitButton"] > button:hover {
-                box-shadow: 0 6px 12px -2px rgba(37, 99, 235, 0.3) !important;
-                opacity: 0.95 !important;
-            }
-            
-            .stTextInput label {
-                font-size: 0.8rem !important;
-                color: #334155 !important;
-                font-weight: 600 !important;
-            }
-            .stTextInput input {
-                border-radius: 8px !important;
-                border: 1px solid #cbd5e1 !important;
-                padding: 10px 14px !important;
-                font-size: 0.95rem !important;
-                color: #0f172a !important;
-            }
-            .stTextInput input:focus {
-                border-color: #3b82f6 !important;
-                box-shadow: 0 0 0 3px rgba(59,130,246,0.15) !important;
-            }
-            
-            .support-text {
-                font-size: 0.75rem;
-                color: #94a3b8;
-                text-align: center;
-                margin-top: 25px;
-                font-weight: 500;
-            }
-            </style>
-            """, unsafe_allow_html=True)
-            
-            col1, col2, col3 = st.columns([1, 1.5, 1])
-            with col2:
-                with st.container(border=True):
-                    st.markdown("""
-                    <div style="text-align:center; margin-top: 10px;">
-                        <div style="display:inline-flex; width:56px; height:56px; background:linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); border-radius:14px; align-items:center; justify-content:center; color:white; font-weight:800; font-size:1.6rem; box-shadow:0 6px 10px -2px rgba(59,130,246,0.25);">NC</div>
-                    </div>
-                    <div class='logo-text'>Next Cable</div>
-                    <div class='sub-text'>Logística & Cotações</div>
-                    """, unsafe_allow_html=True)
-                    
-                    with st.form("login_form", border=False):
-                        email = st.text_input("E-mail", placeholder="vendedor@nextcable.com.br")
-                        password = st.text_input("Senha", type="password", placeholder="••••••••")
-                        manter_conectado = st.checkbox("Manter conectado", value=True)
+            login_placeholder = st.empty()
+            with login_placeholder.container():
+                st.markdown("""
+                <style>
+                [data-testid="stSidebar"] { display: none !important; }
+                [data-testid="stHeader"] { display: none !important; }
+                
+                .block-container {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    min-height: 90vh;
+                    padding-top: 2rem !important;
+                }
+                
+                div[data-testid="stForm"] {
+                    border: none !important;
+                    padding: 0 !important;
+                }
+                
+                .logo-text {
+                    font-size: 1.4rem;
+                    font-weight: 800;
+                    color: #0f172a;
+                    text-align: center;
+                    margin-top: 15px;
+                    margin-bottom: 2px;
+                    letter-spacing: -0.02em;
+                }
+                .sub-text {
+                    font-size: 0.85rem;
+                    color: #64748b;
+                    text-align: center;
+                    margin-bottom: 25px;
+                    font-weight: 600;
+                }
+                
+                div[data-testid="stFormSubmitButton"] > button {
+                    background: #000033 !important;
+                    color: #ffffff !important;
+                    border: none !important;
+                    border-radius: 8px !important;
+                    font-weight: 700 !important;
+                    height: 46px !important;
+                    margin-top: 10px !important;
+                    box-shadow: 0 4px 6px -1px rgba(0, 0, 51, 0.2) !important;
+                    transition: all 0.2s ease !important;
+                    letter-spacing: 0.03em !important;
+                }
+                div[data-testid="stFormSubmitButton"] > button:hover {
+                    box-shadow: 0 6px 12px -2px rgba(0, 0, 51, 0.3) !important;
+                    opacity: 0.95 !important;
+                }
+                
+                .stTextInput label {
+                    font-size: 0.8rem !important;
+                    color: #334155 !important;
+                    font-weight: 600 !important;
+                }
+                .stTextInput input {
+                    border-radius: 8px !important;
+                    border: 1px solid #cbd5e1 !important;
+                    padding: 10px 14px !important;
+                    font-size: 0.95rem !important;
+                    color: #0f172a !important;
+                }
+                .stTextInput input:focus {
+                    border-color: #000033 !important;
+                    box-shadow: 0 0 0 3px rgba(0, 0, 51, 0.15) !important;
+                }
+                
+                .support-text {
+                    font-size: 0.75rem;
+                    color: #94a3b8;
+                    text-align: center;
+                    margin-top: 25px;
+                    font-weight: 500;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+                
+                col1, col2, col3 = st.columns([1, 1.5, 1])
+                with col2:
+                    with st.container(border=True):
+                        import base64 as _b64_login
+                        _logo_login_b64 = ""
+                        if os.path.exists("logo_next.png"):
+                            with open("logo_next.png", "rb") as _flg:
+                                _logo_login_b64 = _b64_login.b64encode(_flg.read()).decode()
+                        if _logo_login_b64:
+                            st.markdown(f"""
+                            <div style="text-align:center; margin-top: 10px;">
+                                <img src="data:image/png;base64,{_logo_login_b64}" style="max-width:180px;height:auto;" />
+                            </div>
+                            <div class='sub-text' style='margin-top:10px;'>Logística & Cotações</div>
+                            """, unsafe_allow_html=True)
+                        else:
+                            st.markdown("""
+                            <div style="text-align:center; margin-top: 10px;">
+                                <div style="display:inline-flex; width:56px; height:56px; background:#000033; border-radius:14px; align-items:center; justify-content:center; color:white; font-weight:800; font-size:1.6rem; box-shadow:0 6px 10px -2px rgba(0,0,51,0.25);">NC</div>
+                            </div>
+                            <div class='logo-text'>Next Cable</div>
+                            <div class='sub-text'>Logística & Cotações</div>
+                            """, unsafe_allow_html=True)
                         
-                        submit = st.form_submit_button("ENTRAR", use_container_width=True)
-                        
-                        if submit:
-                            try:
-                                import db_historico
-                                user_db = db_historico.authenticate_local_user(email, password)
-                                if user_db:
-                                    if user_db["status"] != "ATIVO":
-                                        st.error("Usuário bloqueado.")
+                        with st.form("login_form", border=False):
+                            email = st.text_input("E-mail", placeholder="vendedor@nextcable.com.br")
+                            password = st.text_input("Senha", type="password", placeholder="••••••••")
+                            manter_conectado = st.checkbox("Manter conectado", value=True)
+                            
+                            submit = st.form_submit_button("ENTRAR", use_container_width=True)
+                            
+                            if submit:
+                                try:
+                                    user_db = db_historico.authenticate_local_user(email, password)
+                                    if user_db:
+                                        if user_db["status"] != "ATIVO":
+                                            st.error("Usuário bloqueado.")
+                                        else:
+                                            st.session_state.user = user_db
+                                            if manter_conectado:
+                                                st.session_state.pending_cookie_token = db_historico.create_session_token(user_db['id'])
                                     else:
-                                        st.session_state.user = user_db
-                                        if manter_conectado and cookie_controller:
-                                            session_token = db_historico.create_session_token(user_db['id'])
-                                            cookie_controller.set('nextcable_session_token', session_token, max_age=60*60*24*30) # 30 dias
-                                        st.rerun()
-                                else:
+                                        st.error("E-mail ou senha incorretos.")
+                                except Exception:
                                     st.error("E-mail ou senha incorretos.")
-                            except Exception:
-                                st.error("E-mail ou senha incorretos.")
-                    
-                    st.markdown("<div class='support-text'>Problemas para acessar? Procure o administrador.</div>", unsafe_allow_html=True)
+                        
+                        st.markdown("<div class='support-text'>Problemas para acessar? Procure o administrador.</div>", unsafe_allow_html=True)
             
-            st.stop()
+            if not st.session_state.user:
+                st.stop()
+            else:
+                login_placeholder.empty()
+                if "pending_cookie_token" in st.session_state and cookie_controller:
+                    cookie_controller.set('nextcable_session_token', st.session_state.pending_cookie_token, max_age=60*60*24*30)
+                    del st.session_state.pending_cookie_token
 
 check_auth()
 
@@ -278,7 +294,7 @@ st.markdown("""
 
 /* Sidebar SaaS */
 section[data-testid="stSidebar"] {
-    background-color: #0f172a !important;
+    background-color: #000033 !important;
     border-right: none !important;
 }
 section[data-testid="stSidebar"] .stButton > button {
@@ -296,19 +312,19 @@ section[data-testid="stSidebar"] .stButton > button {
     border: none !important;
 }
 section[data-testid="stSidebar"] .stButton > button:hover {
-    background-color: #1e293b !important;
-    color: #f1f5f9 !important;
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    color: #ffffff !important;
 }
 section[data-testid="stSidebar"] .stButton > button[kind="primary"] {
-    background-color: #1e293b !important;
+    background-color: rgba(255, 255, 255, 0.15) !important;
     color: #ffffff !important;
     font-weight: 600 !important;
-    border-left: 3px solid #3b82f6 !important;
+    border-left: 3px solid #ffffff !important;
     padding-left: 11px !important;
 }
 section[data-testid="stSidebar"] [data-testid="stExpander"] {
-    background-color: #1e293b !important;
-    border: 1px solid #334155 !important;
+    background-color: #000033 !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
 }
 section[data-testid="stSidebar"] [data-testid="stExpander"] summary {
     color: #e2e8f0 !important;
@@ -334,8 +350,8 @@ section[data-testid="stSidebar"] [data-testid="stExpander"] summary:hover {
     transition: border-color 0.15s, box-shadow 0.15s;
 }
 .stTextInput > div > div > input:focus, .stNumberInput > div > div > input:focus {
-    border-color: #3b82f6 !important;
-    box-shadow: 0 0 0 2px rgba(59,130,246,0.15) !important;
+    border-color: #000033 !important;
+    box-shadow: 0 0 0 2px rgba(0,0,51,0.15) !important;
 }
 .stTextArea textarea {
     border: 1px solid #cbd5e1 !important;
@@ -343,13 +359,13 @@ section[data-testid="stSidebar"] [data-testid="stExpander"] summary:hover {
     font-size: 0.88rem !important;
 }
 .stTextArea textarea:focus {
-    border-color: #3b82f6 !important;
-    box-shadow: 0 0 0 2px rgba(59,130,246,0.15) !important;
+    border-color: #000033 !important;
+    box-shadow: 0 0 0 2px rgba(0,0,51,0.15) !important;
 }
 
 /* CTA Button */
 .btn-cta > div > button {
-    background-color: #0f172a !important;
+    background-color: #000033 !important;
     color: #ffffff !important;
     font-weight: 700 !important;
     font-size: 0.95rem !important;
@@ -361,7 +377,7 @@ section[data-testid="stSidebar"] [data-testid="stExpander"] summary:hover {
     letter-spacing: 0.02em !important;
 }
 .btn-cta > div > button:hover {
-    background-color: #1e293b !important;
+    background-color: #00004d !important;
 }
 
 /* Containers */
@@ -487,20 +503,36 @@ MERCADORIA_LOGBG = int(_secret("MERCADORIA_LOGBG", 110))
 
 # ====================== SIDEBAR ENTERPRISE ======================
 with st.sidebar:
-    st.markdown(
-        """
-        <div style="padding:20px 0 20px 0;margin-bottom:24px;">
-          <div style="display:flex;align-items:center;gap:12px;">
-            <div translate="no" class="notranslate" style="width:36px;height:36px;background:linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:1.1rem;box-shadow:0 4px 6px -1px rgba(59,130,246,0.2);">NC</div>
-            <div>
-              <div translate="no" class="notranslate" style="font-size:1.05rem;font-weight:700;color:#f1f5f9;letter-spacing:-0.02em;">Next Cable</div>
-              <div style="font-size:0.75rem;color:#cbd5e1;font-weight:600;">Logística & Cotações</div>
+    import base64 as _b64_sb
+    _logo_sb_b64 = ""
+    if os.path.exists("logo_next.png"):
+        with open("logo_next.png", "rb") as _fsb:
+            _logo_sb_b64 = _b64_sb.b64encode(_fsb.read()).decode()
+    if _logo_sb_b64:
+        st.markdown(
+            f"""
+            <div style="padding:20px 0 20px 0;margin-bottom:24px;text-align:center;">
+              <img src="data:image/png;base64,{_logo_sb_b64}" style="max-width:180px;height:auto;" />
+              <div style="font-size:0.75rem;color:#cbd5e1;font-weight:600;margin-top:10px;">Logística & Cotações</div>
             </div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            """
+            <div style="padding:20px 0 20px 0;margin-bottom:24px;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div translate="no" class="notranslate" style="width:36px;height:36px;background:#000033;border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:1.1rem;box-shadow:0 4px 6px -1px rgba(0,0,51,0.2);">NC</div>
+                <div>
+                  <div translate="no" class="notranslate" style="font-size:1.05rem;font-weight:700;color:#f1f5f9;letter-spacing:-0.02em;">Next Cable</div>
+                  <div style="font-size:0.75rem;color:#cbd5e1;font-weight:600;">Logística & Cotações</div>
+                </div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     st.markdown("<div style='font-size:0.65rem;font-weight:700;color:#cbd5e1;margin-bottom:8px;letter-spacing:0.08em;text-transform:uppercase;padding:0 4px;'>Menu</div>", unsafe_allow_html=True)
 
@@ -530,26 +562,27 @@ with st.sidebar:
             st.session_state.active_module = m
             st.rerun()
         if m == "Rastreamento de Pedidos":
-            st.markdown("<div style='text-align:center; margin-top:-8px; margin-bottom:12px;'><span style='background:#1e293b; color:#94a3b8; font-size:10px; font-weight:700; padding:3px 10px; border-radius:10px; letter-spacing:0.05em; text-transform:uppercase; border:1px solid #334155;'>Em breve</span></div>", unsafe_allow_html=True)
+            st.markdown("<div style='text-align:center; margin-top:-8px; margin-bottom:12px;'><span style='background:rgba(255,255,255,0.1); color:#cbd5e1; font-size:10px; font-weight:700; padding:3px 10px; border-radius:10px; letter-spacing:0.05em; text-transform:uppercase; border:1px solid rgba(255,255,255,0.2);'>Em breve</span></div>", unsafe_allow_html=True)
 
     aba = st.session_state.active_module
 
-    st.markdown("<div style='margin-top:28px;padding-top:16px;border-top:1px solid #1e293b;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-top:28px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.1);'></div>", unsafe_allow_html=True)
 
     if st.button("Sair", key="btn_logout", use_container_width=True):
         if "auth" in st.secrets:
             st.logout()
         else:
+            _user_to_logout = st.session_state.get("user")
             if "user" in st.session_state:
                 del st.session_state["user"]
             cookie_controller_logout = CookieController() if CookieController else None
             if cookie_controller_logout:
-                if st.session_state.user:
-                    db_historico.clear_session_token(st.session_state.user['id'])
+                if _user_to_logout:
+                    db_historico.clear_session_token(_user_to_logout['id'])
                 cookie_controller_logout.remove('nextcable_session_token')
             st.rerun()
 
-    st.markdown("<div style='margin-top:28px;padding-top:16px;border-top:1px solid #1e293b;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-top:28px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.1);'></div>", unsafe_allow_html=True)
     st.markdown("<div style='font-size:0.65rem;font-weight:700;color:#cbd5e1;margin-bottom:8px;letter-spacing:0.08em;text-transform:uppercase;padding:0 4px;'>Transportadoras</div>", unsafe_allow_html=True)
 
     with st.expander("Abrangência (16 Transportadoras)"):
@@ -666,6 +699,9 @@ if aba == "Nova Cotação":
 
         if len(doc_limpo) == 14:
             info_emp_dest = buscar_empresa_cnpj(doc_limpo)
+            
+
+            
             if info_emp_dest and info_emp_dest.get("ok"):
                 _razao = info_emp_dest.get('razao', '')
                 _logr = info_emp_dest.get('logradouro', '')
@@ -677,19 +713,6 @@ if aba == "Nova Cotação":
                 _cep_fmt = f"{_cep_emp[:5]}-{_cep_emp[5:]}" if len(_cep_emp) == 8 else _cep_emp
                 _end_parts = [p for p in [f"{_logr}, {_num}" if _logr else "", _bairro] if p]
                 _end_str = " — ".join(_end_parts) if _end_parts else "Endereço não disponível"
-                # Format the card dynamically to avoid fixed height, allowing wrapping
-                st.markdown(
-                    f"""
-                    <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:16px; margin:10px 0; width:100%; box-sizing:border-box;">
-                      <div style="font-weight:700; color:#15803d; font-size:1rem; margin-bottom:6px; word-break:break-word;">{_razao}</div>
-                      <div style="font-size:0.85rem; color:#166534; line-height:1.6; margin-bottom:2px; word-break:break-word;">{_end_str}</div>
-                      <div style="font-size:0.85rem; color:#166534; line-height:1.6; margin-bottom:2px; word-break:break-word;">{_cidade}/{_uf_emp}</div>
-                      <div style="font-size:0.85rem; color:#166534; line-height:1.6; word-break:break-word;">CEP {_cep_fmt}</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-                
                 # Auto-preenchimento do CEP
                 if st.session_state.get("last_cnpj_fetched") != doc_limpo:
                     st.session_state.last_cnpj_fetched = doc_limpo
@@ -703,12 +726,17 @@ if aba == "Nova Cotação":
                         st.session_state.uf = info_emp_dest.get("uf")
                         st.rerun()
             else:
-                st.text_input("Nome / Razão Social (Não encontrado na API)", key="razao_social")
+                if st.session_state.get("last_cnpj_fetched") != doc_limpo:
+                    st.session_state.last_cnpj_fetched = doc_limpo
+                    st.warning("Não foi possível consultar automaticamente os dados cadastrais deste CNPJ no momento.\n\nIsso não impede a cotação. Continue informando o CEP de destino.")
         elif len(doc_limpo) > 0:
-            st.text_input("Nome / Razão Social", key="razao_social")
-        else:
-            if "razao_social" in st.session_state:
+            if "razao_social" in st.session_state and st.session_state.razao_social != "":
                 st.session_state.razao_social = ""
+                st.session_state.last_cnpj_fetched = ""
+        else:
+            if "razao_social" in st.session_state and st.session_state.razao_social != "":
+                st.session_state.razao_social = ""
+                st.session_state.last_cnpj_fetched = ""
 
         cep_destino = st.text_input("CEP Destino", key="cep_d")
         if cep_destino:
@@ -757,7 +785,7 @@ if aba == "Nova Cotação":
             # Se a busca por CNPJ salvou os dados da empresa, usamos
             _nome = ""
             if len(doc_limpo) == 14 and st.session_state.get('razao_social'):
-                _nome = f"<div style='font-weight:700;font-size:0.95rem;color:#1e40af;margin-bottom:6px;'>{st.session_state.get('razao_social')}</div>"
+                _nome = f"<div translate='no' class='notranslate' style='font-weight:700;font-size:0.95rem;color:#000033;margin-bottom:6px;'>{st.session_state.get('razao_social')}</div>"
                 if not _logr: _logr = st.session_state.get('logradouro', '')
                 if not _bairro: _bairro = st.session_state.get('bairro', '')
             
@@ -868,20 +896,32 @@ if aba == "Nova Cotação":
             calc_volume_m3 = 0.0
 
             if df_volumes_editado is not None and not df_volumes_editado.empty:
+                # Extração direta usando vetorização com fallback seguro:
+                qtd_col = "Qtd" if "Qtd" in df_volumes_editado.columns else df_volumes_editado.columns[0]
+                peso_col = "Peso Total (kg)" if "Peso Total (kg)" in df_volumes_editado.columns else (df_volumes_editado.columns[4] if len(df_volumes_editado.columns) > 4 else None)
+                
+                try:
+                    calc_volumes_qtd = int(df_volumes_editado[qtd_col].apply(safe_float).sum())
+                except:
+                    pass
+                    
+                try:
+                    if peso_col:
+                        calc_peso_real = float(df_volumes_editado[peso_col].apply(safe_float).sum())
+                except:
+                    pass
+
                 for _, row in df_volumes_editado.iterrows():
                     try:
-                        _q = safe_int(row.get("Qtd", 0))
-                        _a = safe_float(row.get("Alt (cm)", 0))
-                        _l = safe_float(row.get("Larg (cm)", 0))
-                        _c = safe_float(row.get("Comp (cm)", 0))
-                        _pu = safe_float(row.get("Peso Total (kg)", 0))
-
-                        calc_volumes_qtd += _q
-                        calc_peso_real += _pu
+                        _q = safe_int(row.get(qtd_col)) if not pd.isna(row.get(qtd_col)) else safe_int(row.iloc[0] if len(row) > 0 else 0)
+                        _a = safe_float(row.get("Alt (cm)")) if not pd.isna(row.get("Alt (cm)")) else safe_float(row.iloc[1] if len(row) > 1 else 0)
+                        _l = safe_float(row.get("Larg (cm)")) if not pd.isna(row.get("Larg (cm)")) else safe_float(row.iloc[2] if len(row) > 2 else 0)
+                        _c = safe_float(row.get("Comp (cm)")) if not pd.isna(row.get("Comp (cm)")) else safe_float(row.iloc[3] if len(row) > 3 else 0)
+                        
                         calc_volume_m3 += (_q * (_a * _l * _c)) / 1000000.0
                     except Exception as e:
                         import logging
-                        logging.warning(f"Erro ao processar volume: {e}")
+                        logging.warning(f"Erro ao processar volume (cubagem): {e}")
 
             fator_cubagem = 300
             calc_peso_cubado = calc_volume_m3 * fator_cubagem
@@ -905,7 +945,7 @@ if aba == "Nova Cotação":
             e_cubado = False
         
         texto_regra = "Cobrança por Cubagem" if e_cubado else "Cobrança por Peso Real"
-        cor_destaque = "#2563eb" if e_cubado else "#059669"
+        cor_destaque = "#000033" if e_cubado else "#059669"
 
         # Resumo de Volumes - Grid Customizado (garante mesma altura visual e previne quebras)
         st.markdown(f"""
@@ -947,7 +987,7 @@ if aba == "Nova Cotação":
         _cd = info_d.get('cidade', '')
         _uf = info_d.get('uf', '')
         if _rs:
-            st.markdown(f"**Destinatário:** {_rs}")
+            st.markdown(f"**Destinatário:** <span translate='no' class='notranslate'>{_rs}</span>", unsafe_allow_html=True)
         st.markdown(f"**CNPJ/CPF:** {doc_destinatario}")
         st.markdown(f"**Destino:** {_cd}/{_uf} — CEP {cep_destino}")
         st.markdown(f"**Remetente:** {cnpj_remetente} — CEP {cep_origem}")
@@ -1118,7 +1158,7 @@ if aba == "Nova Cotação":
         chaves_tabelas = [
             "PRINCESA", "ALFA", "TW", "ENVIA_RAPIDO", "GARCIA", "SUDOESTE",
             "CARRION", "EXPRESSO_SAO_MIGUEL", "LOGDI", "OURO_NEGRO",
-            "RODONAVES", "TECMAR", "AGEX", "VIP"
+            "RODONAVES", "TECMAR", "AGEX", "VIP", "ARAGAO"
         ]
 
         resultados_tabelas = [
@@ -1202,7 +1242,7 @@ if aba == "Nova Cotação":
 
         # Cabeçalho da Seção de Resultados com dados do destinatário
         _rs_header = st.session_state.get('razao_social', '')
-        _dest_label = f"<b>{_rs_header}</b> — " if _rs_header else ""
+        _dest_label = f"<b translate='no' class='notranslate'>{_rs_header}</b> — " if _rs_header else ""
         
         col_res_header, col_res_excel, col_res_wa = st.columns([2.2, 1, 1.3], vertical_alignment="bottom")
         with col_res_header:
@@ -1580,7 +1620,7 @@ elif aba == "Rastreamento de Pedidos":
             with k2:
                 st.markdown(f"""<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:15px; text-align:center;"><div style="font-size:12px; font-weight:600; color:#64748b; text-transform:uppercase;">Entregues</div><div style="font-size:24px; font-weight:700; color:#10b981; margin-top:5px;">{n_entregue}</div></div>""", unsafe_allow_html=True)
             with k3:
-                st.markdown(f"""<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:15px; text-align:center;"><div style="font-size:12px; font-weight:600; color:#64748b; text-transform:uppercase;">Em Trânsito</div><div style="font-size:24px; font-weight:700; color:#3b82f6; margin-top:5px;">{n_transito}</div></div>""", unsafe_allow_html=True)
+                st.markdown(f"""<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:15px; text-align:center;"><div style="font-size:12px; font-weight:600; color:#64748b; text-transform:uppercase;">Em Trânsito</div><div style="font-size:24px; font-weight:700; color:#000033; margin-top:5px;">{n_transito}</div></div>""", unsafe_allow_html=True)
             with k4:
                 st.markdown(f"""<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:15px; text-align:center;"><div style="font-size:12px; font-weight:600; color:#64748b; text-transform:uppercase;">Ocorrências / Atrasos</div><div style="font-size:24px; font-weight:700; color:#ef4444; margin-top:5px;">{n_ocorr}</div></div>""", unsafe_allow_html=True)
             st.write("")
@@ -1737,7 +1777,7 @@ elif aba == "Rastreamento de Pedidos":
                                     desc_txt = e.get("descricao", e.get("status", ""))
                                     st.markdown(
                                         f'<div style="border-left:3px solid #10b981;padding-left:12px;margin-bottom:10px;">'
-                                        f'<div style="font-weight:700;color:#1e3a8a;font-size:0.85rem;">{d_txt}</div>'
+                                        f'<div style="font-weight:700;color:#000033;font-size:0.85rem;">{d_txt}</div>'
                                         f'<div style="color:#334155;font-size:0.82rem;">{desc_txt}</div>'
                                         f'</div>',
                                         unsafe_allow_html=True,
@@ -2136,7 +2176,7 @@ div[data-testid="stDialog"] div[data-testid="column"]:nth-child(1) button p {
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
                         <div style="flex:1;">
                             <div style="font-size:12px; color:#64748b; font-weight:600;">#{item.get('id', '')} &nbsp;|&nbsp; {dh_str} {alerta_expiracao_html}</div>
-                            <div style='font-size:14px; color:#0f172a; font-weight:600; margin-top:5px;'>{nome_display}</div>
+                            <div translate='no' class='notranslate' style='font-size:14px; color:#0f172a; font-weight:600; margin-top:5px;'>{nome_display}</div>
                             <div style='font-size:13px; color:#475569; margin-top:2px;'>CNPJ: {doc_cli}</div>
                             <div style='font-size:13px; color:#475569; margin-top:2px;'>Destino: {destino_str}  |  Valor NF: {utils.formatar_moeda(valor_nf)}</div>
                             {aprovacao_html}
@@ -2201,7 +2241,25 @@ div[data-testid="stDialog"] div[data-testid="column"]:nth-child(1) button p {
 elif aba == "Painel Admin":
     st.markdown("<div style='font-size:1.5rem;font-weight:800;color:#0f172a;margin-bottom:4px;letter-spacing:-0.03em;'>Painel Administrativo</div>", unsafe_allow_html=True)
     st.markdown("<div style='font-size:0.82rem;color:#64748b;margin-bottom:20px;'>Gerenciamento de usuários e acessos.</div>", unsafe_allow_html=True)
-    
+    @st.dialog("Excluir Usuário")
+    def excluir_usuario_dialog(u_id, u_nome, u_email):
+        st.warning(f"Tem certeza que deseja excluir permanentemente o usuário **{u_nome}** ({u_email})?")
+        st.error("Atenção: Esta ação é irreversível. Caso possua histórico, o usuário será apenas inativado.")
+        confirm = st.text_input("Para confirmar, digite EXCLUIR", key=f"confirm_excluir_{u_id}")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Sim, Excluir", type="primary", use_container_width=True):
+                if confirm.strip() == "EXCLUIR":
+                    sucesso = db_historico.excluir_usuario(u_id)
+                    if sucesso:
+                        st.success("Usuário excluído/inativado com sucesso!")
+                        st.rerun()
+                else:
+                    st.error("Confirmação incorreta. Digite EXCLUIR.")
+        with col2:
+            if st.button("Cancelar", use_container_width=True):
+                st.rerun()
+
     tab1, tab2 = st.tabs(["Gerenciar Usuários", "Novo Usuário"])
     
     with tab1:
@@ -2212,7 +2270,7 @@ elif aba == "Painel Admin":
                     st.write(f"**ID:** {u['id']}")
                     st.write(f"**Criado em:** {u['created_at']}")
                     
-                    c1, c2 = st.columns(2)
+                    c1, c2, c3 = st.columns([1, 1, 1])
                     with c1:
                         novo_status = st.selectbox("Status", ["ATIVO", "BLOQUEADO"], index=0 if u['status'] == "ATIVO" else 1, key=f"status_{u['id']}")
                         if st.button("Atualizar Status", key=f"btn_status_{u['id']}"):
@@ -2229,6 +2287,14 @@ elif aba == "Painel Admin":
                                 st.rerun()
                             else:
                                 st.error("Digite a nova senha.")
+                                
+                    with c3:
+                        st.write("Ações")
+                        if u['id'] != st.session_state.user['id']:
+                            if st.button("Excluir Usuário", key=f"btn_excluir_{u['id']}", type="primary", use_container_width=True):
+                                excluir_usuario_dialog(u['id'], u['nome'], u['email'])
+                        else:
+                            st.info("Você não pode excluir a si mesmo.")
         else:
             st.info("Nenhum usuário encontrado.")
             

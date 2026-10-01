@@ -130,6 +130,13 @@ TRANSPORTADORAS_CONFIG = {
         "abrangencia_tags": ["PR (Norte/Noroeste)"],
         "descricao": "Entregas regionais rápidas no Norte e Noroeste do Paraná",
     },
+    "ARAGAO": {
+        "nome": "Aragão Entregas",
+        "tipo": "Proposta Comercial Combinada",
+        "contrato": "Proposta Comercial 19/06/2026",
+        "abrangencia_tags": ["GO", "MT", "MS"],
+        "descricao": "Atendimento exclusivo GO, MT e MS",
+    },
 }
 
 # ==============================================================================
@@ -216,6 +223,11 @@ LOGOS_CONFIG = {
         "bg": "#78350F", "accent": "#FBBF24", "text": "#FFFFFF", "sub": "REGIONAL NORTE PR",
         "icon": """<polygon points="20,6 23,13 30,13 24,18 26,25 20,20 14,25 16,18 10,13 17,13" fill="#FBBF24"/>""",
         "title": "ATENDIMENTO VIP"
+    },
+    "ARAGAO": {
+        "bg": "#D97706", "accent": "#FFFFFF", "text": "#FFFFFF", "sub": "ENTREGAS RÁPIDAS",
+        "icon": """<polygon points="4,16 12,8 20,16 12,24" fill="#FFFFFF"/><polygon points="20,16 28,8 36,16 28,24" fill="#FDE68A"/>""",
+        "title": "ARAGÃO"
     }
 }
 
@@ -266,6 +278,22 @@ CIDADES_CARRION_SP = {
     "presidente prudente", "ourinhos", "tupa", "adamantina", "dracena",
     "aracatuba", "birigui", "bauru", "botucatu", "jau", "lins", "sao carlos",
     "araraquara", "ribeirao preto", "franca", "sorocaba", "jundiai", "piracicaba"
+}
+
+# Cidades atendidas pela Aragão (Tabelas 1, 2 e 3)
+CIDADES_ARAGAO_TB1 = {
+    "acreuna", "aparecida de goiania", "goiania", "jatai", "mineiros", "rio verde", "senador canedo",
+    "acorizal", "alta floresta", "alto garcas", "alto paraguai", "alto taquari", "araputanga", "arenapolis", "barra do garcas", "boa esperanca do norte", "brasnorte", "caceres", "campo novo do parecis", "campo verde", "campos de julio", "carlinda", "chapada dos guimaraes", "claudia", "colider", "cuiaba", "general carneiro", "gloria d oeste", "guaranta do norte", "guiratinga", "ipiranga do norte", "itanhanga", "itauba", "itiquira", "jaciara", "jangada", "jauru", "juara", "juscimeira", "lambari d oeste", "lucas do rio verde", "marcelandia", "matupa", "mirassol d oeste", "nobres", "nortelandia", "nossa senhora do livramento", "nova brasilandia", "nova canaa do norte", "nova guarita", "nova lacerda", "nova marilandia", "nova maringa", "nova mutum", "nova olimpia", "nova santa helena", "nova ubirata", "nova xavantina", "novo horizonte do norte", "novo mundo", "paranatinga"
+}
+
+CIDADES_ARAGAO_TB2 = {
+    "pedra preta", "peixoto de azevedo", "planalto da serra", "pocone", "pontal do araguaia", "pontes e lacerda", "primavera do leste", "rondonopolis", "rosario oeste", "sao jose dos quatro marcos", "sapezal", "sinop", "sorriso",
+    "agua clara", "alcinopolis", "amambai", "anastacio", "anaurilandia", "angelica", "antonio joao", "aparecida do taboado", "aquidauana", "aral moreira", "bandeirantes", "bataguassu", "bataypora", "bonito", "brasilandia", "caarapo", "camapua", "campo grande", "cassilandia", "chapadao do sul", "coronel sapucaia", "corumba", "costa rica", "coxim", "deodapolis", "douradina", "dourados", "eldorado", "fatima do sul", "gloria de dourados", "guia lopes da laguna", "iguatemi", "inocencia", "itapora", "itaquirai", "ivinhema", "japora", "jardim", "jatei", "juti", "maracaju", "mundo novo", "navirai", "nioaque", "nova alvorada do sul", "novo horizonte do sul", "paranaiba"
+}
+
+CIDADES_ARAGAO_TB3 = {
+    "paranhos", "ponta pora", "ribas do rio pardo", "rio brilhante", "rio verde de mato grosso", "rochedo", "santa rita do pardo", "sao gabriel do oeste", "selviria", "sidrolandia", "sonora", "tacuru", "taquarussu", "tres lagoas", "vicentina",
+    "agua boa", "alto araguaia", "canarana", "comodoro", "conquista d oeste", "curvelandia", "denise", "diamantino", "dom aquino", "feliz natal", "figueiropolis d oeste", "porto dos gauchos", "porto esperidiao", "porto estrela", "poxoreu", "querencia", "reserva do cabacal", "ribeirao cascalheira", "rio branco", "salto do ceu", "santa carmem", "santa rita do trivelato", "santo afonso", "santo antonio do leste", "sao jose do xingu", "sao pedro da cipa", "tabapora", "tangara da serra", "tapurah", "terra nova do norte", "tesouro", "uniao do sul", "vera", "vila bela da santissima trindade"
 }
 
 # Distâncias estimadas aproximadas (em KM rodoviários a partir de Londrina)
@@ -458,6 +486,14 @@ def verificar_cobertura_estrita(transportadora_key: str, uf: str, cidade: str, c
                 return True, "Cobertura confirmada para polo/região Norte e Noroeste do PR"
             return False, f"Não atende esta região (atende apenas cidades do Norte/Noroeste do PR, não atende {cidade})"
         return False, "Não atende esta região (atende exclusivamente o Norte/Noroeste do Paraná)"
+
+    # 17. ARAGÃO: Exclusivo GO, MT, MS baseado nas 3 tabelas
+    if transportadora_key == "ARAGAO":
+        if uf_u in ["GO", "MT", "MS"]:
+            if cid_norm in CIDADES_ARAGAO_TB1 or cid_norm in CIDADES_ARAGAO_TB2 or cid_norm in CIDADES_ARAGAO_TB3:
+                return True, f"Cobertura confirmada para {cid_norm.title()} - {uf_u}"
+            return False, f"Não atende esta região (cidade {cidade} não consta nas tabelas contratuais)"
+        return False, f"Não atende esta região (atende apenas GO, MT e MS)"
 
     return False, "Região não coberta"
 
@@ -1117,6 +1153,36 @@ def calcular_frete_estrito(
             "Base Tarifária": base_tarifaria, "Status": "Tarifa contratual regional estrita",
             "Atendida": True, "Motivo": "Atendida", "Tags": tags,
             "Composicao": {"Frete Peso": frete_peso, "Pedágio": pedagio, "GRIS": gris, "ADV": adv}
+        }
+
+    # -------------------------------------------------------------------------
+    # ARAGAO (Proposta Comercial Combinada)
+    # -------------------------------------------------------------------------
+    if transportadora_key == "ARAGAO":
+        prazo = None
+        if cid_norm in CIDADES_ARAGAO_TB1:
+            faixas = [(10, 80.00), (20, 85.00), (30, 88.00), (40, 90.00), (60, 95.00), (70, 100.00), (80, 110.00), (100, 125.00)]
+            exc = 2.20
+        elif cid_norm in CIDADES_ARAGAO_TB2:
+            faixas = [(10, 50.00), (20, 55.00), (30, 60.00), (40, 65.00), (60, 70.00), (70, 75.00), (80, 82.00), (100, 105.00)]
+            exc = 1.23
+        else: # CIDADES_ARAGAO_TB3
+            faixas = [(10, 100.00), (20, 105.00), (30, 110.00), (40, 115.00), (60, 120.00), (70, 130.00), (80, 145.00), (100, 165.00)]
+            exc = 2.85
+
+        frete_peso = faixas[-1][1] + max(0.0, peso - 100.0) * exc if peso > 100.0 else next(v for limit, v in faixas if peso <= limit)
+        pedagio = fracao_100 * 10.80
+        despacho = 12.90
+        tas = 5.50
+        gris = vnf * 0.0007
+        adv = vnf * 0.0100
+        coleta = 5.00
+        total = round(frete_peso + pedagio + despacho + tas + gris + adv + coleta, 2)
+        return {
+            "Transportadora": nome, "Valor Frete (R$)": total, "Prazo (Dias Úteis)": prazo,
+            "Base Tarifária": base_tarifaria, "Status": "Tarifa contratual estrita",
+            "Atendida": True, "Motivo": "Atendida", "Tags": tags,
+            "Composicao": {"Frete Peso": frete_peso, "Pedágio": pedagio, "Despacho": despacho, "TAS": tas, "GRIS": gris, "ADV": adv, "Coleta": coleta}
         }
 
     # Fallback de segurança se chave desconhecida

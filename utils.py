@@ -93,15 +93,19 @@ def buscar_cep(cep_str):
         st.error(f"Erro técnico na busca do CEP: {e}")
     return None
 
-@st.cache_data(show_spinner=False, ttl=3600)
 def buscar_empresa_cnpj(cnpj):
-    """BrasilAPI — razão social, CEP e endereço completo do CNPJ."""
+    """BrasilAPI + ReceitaWS -> razão social, CEP e endereço completo do CNPJ."""
     cnpj_limpo = limpar_documento(cnpj)
     if len(cnpj_limpo) != 14:
         return {"ok": False, "texto": "", "cep": "", "razao": ""}
+    
+    # 1. Tentar BrasilAPI primeiro
+    nome, logradouro, numero, bairro, cidade, uf, cep = "", "", "", "", "", "", ""
+    sucesso = False
+    
     try:
         headers = {"User-Agent": BROWSER_USER_AGENT}
-        res = requests.get(f"https://brasilapi.com.br/api/cnpj/v1/{cnpj_limpo}", headers=headers, timeout=12)
+        res = requests.get(f"https://brasilapi.com.br/api/cnpj/v1/{cnpj_limpo}", headers=headers, timeout=8)
         if res.status_code == 200:
             d = res.json()
             nome = d.get("razao_social") or d.get("nome_fantasia") or ""
@@ -111,21 +115,46 @@ def buscar_empresa_cnpj(cnpj):
             cidade = d.get("municipio", "")
             uf = d.get("uf", "")
             cep = re.sub(r"\D", "", str(d.get("cep", "")))
-            end = " ".join(x for x in [logradouro, numero] if x).strip()
-            partes = [p for p in [nome, end, bairro, f"{cidade}/{uf}" if cidade else "", f"CEP {cep}" if cep else ""] if p]
-            return {
-                "ok": True,
-                "texto": " · ".join(partes),
-                "razao": nome,
-                "cidade": cidade,
-                "uf": uf,
-                "cep": cep,
-                "logradouro": logradouro,
-                "numero": numero,
-                "bairro": bairro,
-            }
+            if nome:
+                sucesso = True
     except Exception:
         pass
+        
+    # 2. Fallback para ReceitaWS se falhar ou vier sem nome
+    if not sucesso:
+        try:
+            res_r = requests.get(f"https://www.receitaws.com.br/v1/cnpj/{cnpj_limpo}", timeout=8)
+            if res_r.status_code == 200:
+                dr = res_r.json()
+                if dr.get("status") != "ERROR":
+                    nome = dr.get("nome") or dr.get("fantasia") or nome
+                    logradouro = dr.get("logradouro") or logradouro
+                    numero = dr.get("numero") or numero
+                    bairro = dr.get("bairro") or bairro
+                    cidade = dr.get("municipio") or cidade
+                    uf = dr.get("uf") or uf
+                    cep_bruto = dr.get("cep", "")
+                    cep = re.sub(r"\D", "", cep_bruto) if cep_bruto else cep
+                    if nome:
+                        sucesso = True
+        except Exception:
+            pass
+
+    if sucesso:
+        end = " ".join(x for x in [logradouro, numero] if x).strip()
+        partes = [p for p in [nome, end, bairro, f"{cidade}/{uf}" if cidade else "", f"CEP {cep}" if cep else ""] if p]
+        return {
+            "ok": True,
+            "texto": " — ".join(partes),
+            "razao": nome,
+            "cidade": cidade,
+            "uf": uf,
+            "cep": cep,
+            "logradouro": logradouro,
+            "numero": numero,
+            "bairro": bairro,
+        }
+        
     return {"ok": False, "texto": "", "cep": "", "razao": ""}
 
 def mapear_regiao(uf, cidade, transportadora):

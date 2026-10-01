@@ -15,8 +15,8 @@ try:
 except ImportError:
     HAS_POSTGRES = False
 
-DB_PATH = "C:\\Users\\Next\\Desktop\\CotaçõesAutomáticas\\db\\historico.db"
-JSON_PATH = "C:\\Users\\Next\\Desktop\\CotaçõesAutomáticas\\historico.json"
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "db", "historico.db")
+JSON_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "historico_cotacoes.json")
 
 def get_db_config():
     url = os.environ.get("DATABASE_URL")
@@ -283,6 +283,11 @@ def atualizar_status_expiradas():
     """, (now_iso,))
 
 def salvar_cotacao(dados, owner_user_id=None):
+    if not owner_user_id:
+        raise ValueError("ERRO: owner_user_id é obrigatório para salvar uma cotação.")
+    u = get_user_by_id(owner_user_id)
+    if not u:
+        raise ValueError("ERRO: owner_user_id inválido. O usuário não existe.")
     init_db()
     created_at = datetime.now()
     expires_at = created_at + timedelta(days=7)
@@ -331,22 +336,22 @@ def obter_cotacoes(status=None, search=None, limit=100, offset=0, periodo=None, 
         if u: role = u.get("role", role)
     atualizar_status_expiradas()
     
-    query = "SELECT * FROM cotacoes WHERE status != 'EXCLUÍDA'"
+    query = "SELECT c.*, u.nome as vendedor_nome FROM cotacoes c LEFT JOIN usuarios u ON c.owner_user_id = u.id WHERE c.status != 'EXCLUÍDA'"
     params = []
     
     if role != "ADMIN":
-        query += " AND owner_user_id = ?"
+        query += " AND c.owner_user_id = ?"
         params.append(owner_user_id)
     
     if status and status != "Todas":
         if status == "Excluídas":
-            query = query.replace("status != 'EXCLUÍDA'", "status = 'EXCLUÍDA'")
+            query = query.replace("c.status != 'EXCLUÍDA'", "c.status = 'EXCLUÍDA'")
         else:
-            query += " AND status = ?"
+            query += " AND c.status = ?"
             params.append(status.upper())
             
     if search:
-        query += " AND (cnpj_cliente LIKE ? OR nome_cliente LIKE ? OR cidade_uf_destino LIKE ? OR id LIKE ? OR dados_json LIKE ?)"
+        query += " AND (c.cnpj_cliente LIKE ? OR c.nome_cliente LIKE ? OR c.cidade_uf_destino LIKE ? OR c.id LIKE ? OR c.dados_json LIKE ?)"
         lk = f"%{search}%"
         params.extend([lk, lk, lk, lk, lk])
     
@@ -354,22 +359,22 @@ def obter_cotacoes(status=None, search=None, limit=100, offset=0, periodo=None, 
         now = datetime.now()
         if periodo == "Hoje":
             data_ini = now.replace(hour=0, minute=0, second=0).isoformat()
-            query += " AND created_at >= ?"
+            query += " AND c.created_at >= ?"
             params.append(data_ini)
         elif periodo == "Últimos 7 dias":
             data_ini = (now - timedelta(days=7)).isoformat()
-            query += " AND created_at >= ?"
+            query += " AND c.created_at >= ?"
             params.append(data_ini)
         elif periodo == "Últimos 30 dias":
             data_ini = (now - timedelta(days=30)).isoformat()
-            query += " AND created_at >= ?"
+            query += " AND c.created_at >= ?"
             params.append(data_ini)
         elif periodo == "Últimos 90 dias":
             data_ini = (now - timedelta(days=90)).isoformat()
-            query += " AND created_at >= ?"
+            query += " AND c.created_at >= ?"
             params.append(data_ini)
         
-    query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+    query += " ORDER BY c.created_at DESC LIMIT ? OFFSET ?"
     params.extend([limit, offset])
     
     return execute_query(query, params, fetch=True)
@@ -473,20 +478,23 @@ def obter_cotacao_por_id(id_cotacao, owner_user_id=None, role="VENDEDOR"):
     if owner_user_id:
         u = get_user_by_id(owner_user_id)
         if u: role = u.get("role", role)
-    query = "SELECT * FROM cotacoes WHERE id = ?"
+    query = "SELECT c.*, u.nome as vendedor_nome FROM cotacoes c LEFT JOIN usuarios u ON c.owner_user_id = u.id WHERE c.id = ?"
     params = [id_cotacao]
     
     if role != "ADMIN":
-        query += " AND owner_user_id = ?"
+        query += " AND c.owner_user_id = ?"
         params.append(owner_user_id)
         
     return execute_query(query, params, fetchone=True)
 
 def duplicar_cotacao(id_cotacao, new_owner_user_id=None, role="VENDEDOR"):
+    if not new_owner_user_id:
+        raise ValueError("ERRO: new_owner_user_id é obrigatório para duplicar uma cotação.")
+    u = get_user_by_id(new_owner_user_id)
+    if not u:
+        raise ValueError("ERRO: new_owner_user_id inválido.")
+    role = u.get("role", role)
     init_db()
-    if new_owner_user_id:
-        u = get_user_by_id(new_owner_user_id)
-        if u: role = u.get("role", role)
     original = obter_cotacao_por_id(id_cotacao, new_owner_user_id, role)
     if not original:
         return None
@@ -568,6 +576,18 @@ def update_user_status(user_id: str, status: str):
     init_db()
     execute_query("UPDATE usuarios SET status = ? WHERE id = ?", (status, user_id))
 
+def excluir_usuario(user_id: str) -> bool:
+    init_db()
+    # Verifica se há cotações atreladas
+    count = execute_query("SELECT count(*) as c FROM cotacoes WHERE owner_user_id = ?", (user_id,), fetchone=True)
+    if count and count["c"] > 0:
+        # Exclusão Lógica
+        execute_query("UPDATE usuarios SET status = 'INATIVO' WHERE id = ?", (user_id,))
+    else:
+        # Exclusão Física
+        execute_query("DELETE FROM usuarios WHERE id = ?", (user_id,))
+    return True
+
 def reset_user_password(user_id: str, password: str):
     init_db()
     salt, pwd_hash = hash_password(password)
@@ -601,17 +621,21 @@ def delete_entrega(nf: str):
     execute_query("DELETE FROM entregas_rastreamento WHERE nf = ?", (nf,))
 
 def create_session_token(user_id: str) -> str:
+    import hashlib
     token = secrets.token_hex(32)
+    token_hash = hashlib.sha256(token.encode('utf-8')).hexdigest()
     expires_at = (datetime.now() + timedelta(days=30)).isoformat()
     query = "UPDATE usuarios SET session_token = ?, session_expires_at = ? WHERE id = ?"
-    execute_query(query, (token, expires_at, user_id), commit=True)
+    execute_query(query, (token_hash, expires_at, user_id), commit=True)
     return token
 
 def authenticate_session_token(token: str):
     if not token:
         return None
+    import hashlib
+    token_hash = hashlib.sha256(token.encode('utf-8')).hexdigest()
     query = "SELECT * FROM usuarios WHERE session_token = ?"
-    user = execute_query(query, (token,), fetchone=True)
+    user = execute_query(query, (token_hash,), fetchone=True)
     if user and user.get("session_expires_at"):
         try:
             expires_at = datetime.fromisoformat(user["session_expires_at"])
