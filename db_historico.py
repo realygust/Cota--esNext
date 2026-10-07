@@ -11,6 +11,7 @@ import streamlit as st
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
+    from psycopg2 import pool
     HAS_POSTGRES = True
 except ImportError:
     HAS_POSTGRES = False
@@ -31,22 +32,29 @@ def get_db_config():
         
     return {"type": "sqlite", "path": DB_PATH}
 
+@st.cache_resource
+def get_postgres_pool(url):
+    # Utilizamos minconn=1 e maxconn=5.
+    # 5 conexões são conservadoras e suficientes para os ~30 vendedores, 
+    # pois a conexão só é mantida pela duração exata da query.
+    return psycopg2.pool.ThreadedConnectionPool(1, 5, dsn=url)
+
 def get_connection():
     config = get_db_config()
     if config["type"] == "postgres":
-        conn = psycopg2.connect(config["url"])
-        return conn
+        pg_pool = get_postgres_pool(config["url"])
+        return pg_pool.getconn(), pg_pool
     else:
         diretorio = os.path.dirname(config["path"])
         if diretorio:
             os.makedirs(diretorio, exist_ok=True)
         conn = sqlite3.connect(config["path"], check_same_thread=False)
         conn.row_factory = sqlite3.Row
-        return conn
+        return conn, None
 
 def execute_query(query, params=None, fetch=False, fetchone=False, commit=True):
     config = get_db_config()
-    conn = get_connection()
+    conn, pg_pool = get_connection()
     
     if config["type"] == "postgres":
         query = query.replace("?", "%s")
@@ -71,7 +79,10 @@ def execute_query(query, params=None, fetch=False, fetchone=False, commit=True):
             return [dict(row) for row in rows]
     finally:
         cursor.close()
-        conn.close()
+        if config["type"] == "postgres":
+            pg_pool.putconn(conn)
+        else:
+            conn.close()
 
 def hash_password(password: str, salt: bytes = None):
     if salt is None:

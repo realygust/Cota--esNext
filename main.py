@@ -54,23 +54,14 @@ import pandas as pd
 import requests
 import streamlit as st
 import tabelas_engine as te
-import importlib
-try:
-    importlib.reload(te)
-except Exception as e:
-    import logging
-    logging.warning(f"Failed to reload te: {e}")
-
-import importlib
-try:
-    import db_historico
-    importlib.reload(db_historico)
-except Exception as e:
-    import logging
-    logging.warning(f"Failed to reload db_historico: {e}")
-
 import db_historico
-db_historico.init_db()
+
+@st.cache_resource
+def inicializar_banco():
+    db_historico.init_db()
+    return True
+
+inicializar_banco()
 
 
 
