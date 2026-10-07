@@ -103,8 +103,18 @@ def check_auth():
         else:
             if not st.session_state.cookie_init_done:
                 st.session_state.cookie_init_done = True
-                # Pausa a execução no primeiro render para evitar o flash da tela de login.
-                # O componente CookieController enviará os cookies do cliente e acionará um rerun automático.
+                # Exibe uma tela de carregamento da Next enquanto o CookieController verifica a sessão no frontend
+                st.markdown("""
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 90vh; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+                    <div style="width: 45px; height: 45px; border: 4px solid #e2e8f0; border-top: 4px solid #000033; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px;"></div>
+                    <h2 style="color: #0f172a; font-weight: 700; font-size: 1.3rem; margin: 0 0 6px 0; letter-spacing: -0.01em;">Inicializando acesso...</h2>
+                    <p style="color: #64748b; font-weight: 500; font-size: 0.9rem; margin: 0;">Sistema de Cotações Logísticas</p>
+                    <style>
+                        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+                        #MainMenu, header, footer { display: none !important; }
+                    </style>
+                </div>
+                """, unsafe_allow_html=True)
                 st.stop()
 
     has_oidc = "auth" in st.secrets

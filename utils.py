@@ -17,12 +17,7 @@ def _secret(chave, padrao=""):
     return padrao
 
 import db_historico
-
-# Inicializa o banco de dados e roda migrações se necessário
-try:
-    db_historico.init_db()
-except Exception as e:
-    print(f"Erro ao inicializar DB: {e}")
+# Inicialização do banco delegada exclusivamente ao main.py
 
 def carregar_historico():
     # Depreciado, use db_historico.obter_cotacoes() diretamente se possível
