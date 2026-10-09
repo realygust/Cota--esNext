@@ -88,6 +88,7 @@ def buscar_cep(cep_str):
         st.error(f"Erro técnico na busca do CEP: {e}")
     return None
 
+@st.cache_data(show_spinner=False, ttl=3600)
 def buscar_empresa_cnpj(cnpj):
     """BrasilAPI + ReceitaWS -> razão social, CEP e endereço completo do CNPJ."""
     cnpj_limpo = limpar_documento(cnpj)

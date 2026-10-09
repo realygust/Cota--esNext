@@ -36,8 +36,8 @@ TRANSPORTADORAS_CONFIG = {
         "nome": "Princesa dos Campos",
         "tipo": "Tabela Contratual Z032",
         "contrato": "Tabela Z032 (Reajuste 9,5% Fev-25)",
-        "abrangencia_tags": ["SP", "SC", "RS", "PR (Curitiba)"],
-        "descricao": "Atendimento SP, SC, RS e no PR estritamente Curitiba/RMC",
+        "abrangencia_tags": ["SP", "SC", "RS", "PR"],
+        "descricao": "Atendimento SP, SC, RS e PR (Todo o estado)",
     },
     "ALFA": {
         "nome": "Alfa Transportes",
@@ -83,8 +83,8 @@ TRANSPORTADORAS_CONFIG = {
     },
     "EXPRESSO_SAO_MIGUEL": {
         "nome": "Expresso São Miguel",
-        "tipo": "Contrato Nr. 96094/2025",
-        "contrato": "Tabela Fracionada Ref. 02/2025 Eletro/Eletrônicos",
+        "tipo": "Contrato Nr. 149344/2026",
+        "contrato": "Tabela Fracionada Ref. 03/2026 Eletro/Eletrônicos",
         "abrangencia_tags": ["PR", "SC", "RS", "SP"],
         "descricao": "Malha Sul e SP fracionado",
     },
@@ -394,18 +394,11 @@ def verificar_cobertura_estrita(transportadora_key: str, uf: str, cidade: str, c
             return True, f"Cobertura regional confirmada para {uf_u}"
         return False, f"Não atende esta região (atende somente PR, SC, RS)"
 
-    # 3. PRINCESA DOS CAMPOS: SP, SC, RS e no PR estritamente Curitiba/RMC
+    # 3. PRINCESA DOS CAMPOS: SP, SC, RS e PR (Todo o estado, Tabela Cliente Z032)
     if transportadora_key == "PRINCESA":
-        if uf_u in ["SP", "SC", "RS"]:
-            return True, f"Cobertura confirmada para {uf_u}"
-        elif uf_u == "PR":
-            # Estrito: No PR, a tabela Z032 cobre APENAS Curitiba (REG-CURITIBA-PR-01 000148)
-            # CEPs de Curitiba iniciam em 80000 a 82999
-            eh_curitiba = "curitiba" in cid_norm or (len(cep_limpo) == 8 and cep_limpo.startswith(("80", "81", "82", "83")))
-            if eh_curitiba:
-                return True, "Cobertura no PR restrita à Curitiba e Região Metropolitana (Tabela Z032)"
-            return False, "Não atende esta região (tabela atende somente Curitiba no PR; não atende Londrina/Interior)"
-        return False, f"Não atende esta região (atende SP, SC, RS e apenas Curitiba no PR)"
+        if uf_u in ["SP", "SC", "RS", "PR"]:
+            return True, f"Cobertura confirmada para {uf_u} (Tabela Cliente Z032)"
+        return False, f"Não atende esta região (atende SP, SC, RS e PR)"
 
     # 4. ALFA: PR, SC, RS, SP, MS, MT, GO, DF, MG, RJ, ES
     if transportadora_key == "ALFA":
@@ -598,8 +591,8 @@ def calcular_frete_estrito(
     # PRINCESA DOS CAMPOS (Tabela Z032)
     # -------------------------------------------------------------------------
     if transportadora_key == "PRINCESA":
-        # Curitiba (PR), SP, SC, RS
-        if uf_u == "PR":  # Curitiba
+        # PR (Todo o estado), SP, SC, RS
+        if uf_u == "PR":  # Todo o estado
             faixas = [(10, 29.65), (20, 32.35), (30, 35.05), (50, 40.44), (70, 43.16), (100, 53.91)]
             excedente = 0.55
             prazo = 2
@@ -908,42 +901,75 @@ def calcular_frete_estrito(
         }
 
     # -------------------------------------------------------------------------
-    # EXPRESSO SÃO MIGUEL (Contrato 96094/2025)
+    # EXPRESSO SÃO MIGUEL (Contrato 149344/2026)
     # -------------------------------------------------------------------------
     if transportadora_key == "EXPRESSO_SAO_MIGUEL":
+        # Isenção de cubagem até 0,30 m³ (90 kg baseados em 300kg/m3)
+        peso_base = peso
+        if peso_tarifado > peso_real and peso_tarifado <= 90.0:
+            peso_base = max(float(peso_real or 1.0), 1.0)
+            
+        fracao_100_sm = math.ceil(peso_base / 100.0)
+
         if uf_u == "PR":
-            taxa = 35.52
-            quilo = 0.584
-            pedagio = fracao_100 * 3.53
-            gris = max(vnf * 0.0015, 3.53)
+            taxa = 41.11
+            quilo = 0.675
             prazo = 2
         elif uf_u == "SP":
-            taxa = 31.67
-            quilo = 0.500
-            pedagio = fracao_100 * 6.59
-            gris = max(vnf * 0.0020, 6.59)
+            taxa = 36.65
+            quilo = 0.579
             prazo = 3
         elif uf_u == "SC":
-            taxa = 36.50
-            quilo = 0.580
-            pedagio = fracao_100 * 3.53
-            gris = max(vnf * 0.0015, 3.53)
+            taxa = 42.83
+            quilo = 0.695
             prazo = 3
         else:  # RS
-            taxa = 41.00
-            quilo = 0.680
-            pedagio = fracao_100 * 3.53
-            gris = max(vnf * 0.0015, 3.53)
+            taxa = 59.81
+            quilo = 0.965
             prazo = 4
 
-        frete_peso = taxa + (peso * quilo)
-        adv = vnf * 0.0040
-        total = round(frete_peso + pedagio + gris + adv, 2)
+        frete_peso = taxa + (peso_base * quilo)
+        frete_valor = vnf * 0.0040
+        
+        # GRIS: SP = 0,22% min 7,08 | Demais = 0,17% min 3,79
+        if uf_u == "SP":
+            gris = max(vnf * 0.0022, 7.08)
+        else:
+            gris = max(vnf * 0.0017, 3.79)
+            
+        tas = 3.00
+        
+        # Pedágio: SP = 7,08 / Demais = 3,79
+        if uf_u == "SP":
+            pedagio = fracao_100_sm * 7.08
+        else:
+            pedagio = fracao_100_sm * 3.79
+
+        base_sem_pedagio = frete_peso + frete_valor + gris + tas
+        
+        # ICMS por dentro: PR -> SP/SC/RS (interestadual) é 12%. PR -> PR é 19.5%
+        if uf_u == "PR":
+            icms_rate = 0.195
+        else:
+            icms_rate = 0.12
+
+        base_icms = base_sem_pedagio / (1 - icms_rate)
+        icms = base_icms - base_sem_pedagio
+        
+        total = round(base_icms + pedagio, 2)
+
         return {
             "Transportadora": nome, "Valor Frete (R$)": total, "Prazo (Dias Úteis)": prazo,
             "Base Tarifária": base_tarifaria, "Status": "Tarifa contratual estrita",
             "Atendida": True, "Motivo": "Atendida", "Tags": tags,
-            "Composicao": {"Frete Peso": frete_peso, "Pedágio": pedagio, "GRIS": gris, "ADV": adv}
+            "Composicao": {
+                "Frete Peso": round(frete_peso, 2), 
+                "Frete Valor": round(frete_valor, 2),
+                "GRIS": round(gris, 2), 
+                "TAS": round(tas, 2),
+                "Pedágio": round(pedagio, 2),
+                "ICMS": round(icms, 2)
+            }
         }
 
     # -------------------------------------------------------------------------
@@ -1093,46 +1119,57 @@ def calcular_frete_estrito(
         }
 
     # -------------------------------------------------------------------------
-    # AGEX TRANSPORTES (Tabela AGE-010326)
+    # AGEX TRANSPORTES (Tabela AGE-010326 -> Atualizada NEXT CABLE JUN 2026)
     # -------------------------------------------------------------------------
     if transportadora_key == "AGEX":
+        # Tabela atualizada de Junho/2026.
+        # Como o projeto atual não tem um mapeamento geográfico para dividir as cidades
+        # de Santa Catarina entre "SC Capital", "SC Interior 1", etc., não podemos
+        # arbitrar a faixa automaticamente para evitar falsos positivos.
+        if uf_u == "SC":
+            return {
+                "Transportadora": nome, "Valor Frete (R$)": None, "Prazo (Dias Úteis)": None,
+                "Base Tarifária": "NEXT CABLE JUN 2026", "Status": "Indisponível (Falta mapeamento)",
+                "Atendida": False, "Motivo": "Cotação AGEX indisponível — consultar transportadora",
+                "Tags": tags, "Composicao": {}
+            }
+            
         if uf_u == "PR":
             faixas = [(10, 41.91), (20, 46.09), (30, 50.71), (40, 55.77), (50, 61.36)]
             exc = 0.486
-            ped_val = 6.38
             prazo = 2
-        elif uf_u == "SC":
-            faixas = [(10, 48.18), (20, 53.00), (30, 58.30), (40, 64.88), (50, 70.53)]
-            exc = 0.528
-            ped_val = 6.52
-            prazo = 3
         elif uf_u == "RS":
             faixas = [(10, 76.40), (20, 84.02), (30, 92.43), (40, 101.68), (50, 111.84)]
             exc = 0.972
-            ped_val = 7.23
             prazo = 4
         elif uf_u == "SP":
             faixas = [(10, 54.64), (20, 60.12), (30, 66.11), (40, 72.73), (50, 80.01)]
             exc = 0.833
-            ped_val = 6.52
             prazo = 3
         else:  # MS
             faixas = [(10, 58.12), (20, 63.93), (30, 70.33), (40, 77.35), (50, 85.10)]
             exc = 1.250
-            ped_val = 12.13
             prazo = 3
 
         frete_peso = faixas[-1][1] + max(0.0, peso - 50.0) * exc if peso > 50.0 else next(v for limit, v in faixas if peso <= limit)
-        adv = vnf * 0.0030
+        
+        frete_valor = vnf * 0.0030
         gris = vnf * 0.0020
+        tso = max(vnf * 0.0005, 4.70)
+        
+        # Pedágio AGEX Junho 2026
+        ped_val = 6.55 if uf_u in ["PR", "SC", "RS", "SP", "GO", "DF"] else 11.06
         pedagio = fracao_100 * ped_val
-        tas = 7.84 if uf_u in ["RS", "MS"] else 0.0
-        total = round(frete_peso + adv + gris + pedagio + tas, 2)
+        
+        # TAS aplicável
+        tas = 6.21 if uf_u in ["RS", "MS", "MT", "GO", "DF", "RO", "AC", "PA", "TO"] else 0.0
+        
+        total = round(frete_peso + frete_valor + gris + tso + pedagio + tas, 2)
         return {
             "Transportadora": nome, "Valor Frete (R$)": total, "Prazo (Dias Úteis)": prazo,
-            "Base Tarifária": base_tarifaria, "Status": "Tarifa contratual estrita",
-            "Atendida": True, "Motivo": "Atendida", "Tags": tags,
-            "Composicao": {"Frete Peso": frete_peso, "ADV": adv, "GRIS": gris, "Pedágio": pedagio, "TAS": tas}
+            "Base Tarifária": "NEXT CABLE JUN 2026 (Estimativa Local)", "Status": "Tarifa contratual estrita",
+            "Atendida": True, "Motivo": "Estimativa calculada localmente", "Tags": tags,
+            "Composicao": {"Frete Peso": frete_peso, "Frete Valor": frete_valor, "GRIS": gris, "TSO": tso, "Pedágio": pedagio, "TAS": tas}
         }
 
     # -------------------------------------------------------------------------

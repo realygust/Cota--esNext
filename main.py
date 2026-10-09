@@ -4,6 +4,12 @@ import utils
 import api_services
 import excel_generator
 import whatsapp_generator
+import importlib
+try:
+    importlib.reload(whatsapp_generator)
+except Exception:
+    pass
+
 from config import *
 import html
 # ============================================================
@@ -29,11 +35,57 @@ cotar_ssw_wsdl = api_services.cotar_ssw_wsdl
 gerar_excel_cotacao = excel_generator.gerar_excel_cotacao
 gerar_excel_entregas = excel_generator.gerar_excel_entregas
 
-obter_numero_wa = whatsapp_generator.obter_numero_wa
-gerar_badge_logo_html = whatsapp_generator.gerar_badge_logo_html
+obter_numero_wa = getattr(whatsapp_generator, "obter_numero_wa", lambda t: "")
+gerar_badge_logo_html = getattr(whatsapp_generator, "gerar_badge_logo_html", lambda t: f"<div>{t}</div>")
+gerar_mensagem_wa = getattr(whatsapp_generator, "gerar_mensagem_wa", None)
+gerar_link_wa = getattr(whatsapp_generator, "gerar_link_wa", None)
 
 # Alias the dictionary constants in case they are used in main
-CONTATOS_TRANSPORTADORAS = whatsapp_generator.CONTATOS_TRANSPORTADORAS
+CONTATOS_TRANSPORTADORAS = getattr(whatsapp_generator, "CONTATOS_TRANSPORTADORAS", {})
+
+RESTRICOES_MATERIAIS = {
+    "AGEX": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "ALFA": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "ANDORINHA": {"Pallet": "NÃO LEVA", "Bobina": "NÃO LEVA"},
+    "ATUAL CARGAS": {"Pallet": "CONSULTAR REGIAO", "Bobina": "CONSULTAR REGIAO"},
+    "AVIÕES TRANSPORTES": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "BASSO": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "BERTOLINI": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "BRASPRESS": {"Pallet": "LEVA", "Bobina": "NÃO LEVA"},
+    "BRASUL": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "CARRION": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "CARVALIMA": {"Pallet": "NÃO LEVA", "Bobina": "NÃO LEVA"},
+    "CONECTLOG": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "COOPEX": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "CORREIOS": {"Pallet": "NÃO LEVA", "Bobina": "NÃO LEVA"},
+    "CRUZEIRO DO SUL": {"Pallet": "NÃO LEVA", "Bobina": "NÃO LEVA"},
+    "DESTAK": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "ENVIA RAPIDO": {"Pallet": "NÃO LEVA", "Bobina": "NÃO LEVA"},
+    "EUCATUR": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "EXCELLENCE": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "EXPRESSO SÃO MIGUEL": {"Pallet": "NÃO LEVA", "Bobina": "NÃO LEVA"},
+    "FAST PÉROLA": {"Pallet": "NÃO LEVA", "Bobina": "NÃO LEVA"},
+    "GARCIA": {"Pallet": "NÃO LEVA", "Bobina": "NÃO LEVA"},
+    "GOL": {"Pallet": "NÃO LEVA", "Bobina": "NÃO LEVA"},
+    "LOGDI": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "MAEX": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "MENEGHIM": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "MIRA": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "MID": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "MMS": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "PATRUS": {"Pallet": "CONSULTAR REGIAO", "Bobina": "CONSULTAR REGIAO"},
+    "PLAV": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "PORTO 43": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "PRINCESA": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "REUNIDAS CARGAS": {"Pallet": "LEVA", "Bobina": "CONSULTAR REGIAO"},
+    "RICO": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "RODONAVES": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "SUDOESTE": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "TECMAR": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "TRANSLOVATO": {"Pallet": "LEVA", "Bobina": "LEVA"},
+    "VIP": {"Pallet": "NÃO LEVA", "Bobina": "NÃO LEVA"},
+    "RPA CARGO": {"Pallet": "LEVA", "Bobina": "LEVA"},
+}
 import base64
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -549,16 +601,62 @@ with st.sidebar:
     if "active_module" not in st.session_state or st.session_state.active_module not in modulos:
         st.session_state.active_module = "Nova Cotação"
 
+    def limpar_estado_nova_cotacao():
+        import pandas as pd
+        # 1. Remetente / Origem
+        st.session_state["origem_select"] = "NEXT Matriz"
+        st.session_state["cnpj_rem_inp"] = ""
+        st.session_state["cep_o_inp"] = ""
+        st.session_state["cnpj_rem_custom"] = ""
+        st.session_state["cep_rem_custom"] = ""
+
+        # 2. Destinatário
+        st.session_state["cnpj_input"] = ""
+        st.session_state["cep_d"] = ""
+        st.session_state["last_cnpj_fetched"] = ""
+        st.session_state["razao_social"] = ""
+        st.session_state["logradouro"] = ""
+        st.session_state["numero"] = ""
+        st.session_state["bairro"] = ""
+        st.session_state["cidade"] = ""
+        st.session_state["uf"] = ""
+        st.session_state["man_uf"] = ""
+        st.session_state["man_cidade"] = ""
+
+        # 3. Informações da Carga
+        st.session_state["valor_nf_input"] = ""
+        st.session_state["obs_carga_input"] = ""
+
+        # 4. Descrições de linhas "Outro"
+        for k in list(st.session_state.keys()):
+            if k.startswith("desc_outro_linha_"):
+                st.session_state[k] = ""
+                del st.session_state[k]
+
+        # 5. Tabela de volumes: 1 única linha vazia e nova versão do editor
+        st.session_state.volumes_base = pd.DataFrame([{
+            "Tipo": "Outro", "Qtd": 0, "Alt (cm)": 0.0, "Larg (cm)": 0.0, "Comp (cm)": 0.0, "Peso Total (kg)": 0.0
+        }])
+        st.session_state.volumes_data = [{
+            "Tipo": "Outro", "Qtd": 0, "Alt (cm)": 0.0, "Larg (cm)": 0.0, "Comp (cm)": 0.0, "Peso Total (kg)": 0.0, "descricao": ""
+        }]
+        st.session_state.editor_version = st.session_state.get("editor_version", 0) + 1
+        for k in list(st.session_state.keys()):
+            if k.startswith("tabela_volumes_fixa"):
+                del st.session_state[k]
+
+        # 6. Resultados, cotação calculada e status de processamento
+        if "ultima_cotacao" in st.session_state:
+            del st.session_state["ultima_cotacao"]
+        st.session_state["processando_cotacao"] = False
+        st.session_state["processar_confirmado"] = False
+
     for m in modulos:
         is_active = (st.session_state.active_module == m)
         btn_type = "primary" if is_active else "secondary"
         if st.button(m, key=f"nav_{m}", use_container_width=True, type=btn_type):
             if m == "Nova Cotação":
-                # Limpeza COMPLETA do estado de cotação
-                keys_to_keep = ["user", "active_module", "df_empresas", "origem_select", "hist_pagina", "hist_busca", "hist_status", "hist_periodo", "session_token"]
-                for key in list(st.session_state.keys()):
-                    if key not in keys_to_keep and not key.startswith("nav_") and not key.startswith("pag_") and not key.startswith("FormSubmitter:") and not key.startswith("st"):
-                        del st.session_state[key]
+                limpar_estado_nova_cotacao()
             
             st.session_state.active_module = m
             st.rerun()
@@ -840,27 +938,36 @@ if aba == "Nova Cotação":
         st.markdown("<div style='font-size:0.8rem;color:#64748b;margin-bottom:14px;'>Informe as dimensões de cada volume. Pesos cubado e tarifado são calculados em tempo real.</div>", unsafe_allow_html=True)
 
         # Inicializar estado base para a tabela se necessário
+        cols_editor = ["Tipo", "Qtd", "Alt (cm)", "Larg (cm)", "Comp (cm)", "Peso Total (kg)"]
         if "volumes_base" not in st.session_state:
             import pandas as pd
             if "volumes_data" in st.session_state and st.session_state.volumes_data:
                 st.session_state.volumes_base = pd.DataFrame(st.session_state.volumes_data)
+                if "Tipo" not in st.session_state.volumes_base.columns:
+                    st.session_state.volumes_base.insert(0, "Tipo", "Outro")
+                st.session_state.volumes_base = st.session_state.volumes_base[[c for c in cols_editor if c in st.session_state.volumes_base.columns]]
             else:
-                st.session_state.volumes_base = pd.DataFrame([{"Qtd": 0, "Alt (cm)": 0.0, "Larg (cm)": 0.0, "Comp (cm)": 0.0, "Peso Total (kg)": 0.0}])
+                st.session_state.volumes_base = pd.DataFrame([{"Tipo": "Outro", "Qtd": 0, "Alt (cm)": 0.0, "Larg (cm)": 0.0, "Comp (cm)": 0.0, "Peso Total (kg)": 0.0}])
         
         # Se o widget interno do Streamlit foi desmontado (ex: troca de aba), restauramos a base com o último backup
-        if "tabela_volumes_fixa" not in st.session_state:
+        editor_key = f"tabela_volumes_fixa_{st.session_state.get('editor_version', 0)}"
+        if editor_key not in st.session_state:
             if "volumes_data" in st.session_state and st.session_state.volumes_data:
                 import pandas as pd
                 st.session_state.volumes_base = pd.DataFrame(st.session_state.volumes_data)
+                if "Tipo" not in st.session_state.volumes_base.columns:
+                    st.session_state.volumes_base.insert(0, "Tipo", "Outro")
+                st.session_state.volumes_base = st.session_state.volumes_base[[c for c in cols_editor if c in st.session_state.volumes_base.columns]]
 
         try:
             df_volumes_editado = st.data_editor(
-                st.session_state.volumes_base, # NUNCA atualizamos isso de volta para não resetar o componente!
+                st.session_state.volumes_base,
                 num_rows="dynamic",
                 use_container_width=True,
                 hide_index=True,
-                key="tabela_volumes_fixa",
+                key=editor_key,
                 column_config={
+                    "Tipo": st.column_config.SelectboxColumn("Tipo", options=["Outro", "Caixa", "Pallet", "Bobina", "Saco"], default="Outro", required=True),
                     "Qtd": st.column_config.NumberColumn("Qtd", min_value=0, step=1, default=0, required=True),
                     "Alt (cm)": st.column_config.NumberColumn("Alt (cm)", min_value=0.0, step=1.0, default=0.0, required=True),
                     "Larg (cm)": st.column_config.NumberColumn("Larg (cm)", min_value=0.0, step=1.0, default=0.0, required=True),
@@ -869,17 +976,11 @@ if aba == "Nova Cotação":
                 },
             )
 
-            # Sanitização Imediata (A Bala de Prata)
-            df_volumes_editado = df_volumes_editado.fillna(0)
-
-            if df_volumes_editado is not None:
-                # Atualizar APENAS o backup final para não quebrar o estado nativo do Streamlit
-                st.session_state.volumes_data = df_volumes_editado.to_dict(orient="records")
-
-            # Funções de conversão super robustas para garantir que valores vazios ou com vírgula nunca falhem silenciosamente
             def safe_float(val):
                 if pd.isna(val) or val is None:
                     return 0.0
+                if isinstance(val, (int, float)):
+                    return float(val)
                 s = str(val).strip().replace(',', '.')
                 if not s:
                     return 0.0
@@ -891,38 +992,81 @@ if aba == "Nova Cotação":
             def safe_int(val):
                 return int(safe_float(val))
 
-            # Recálculo automático em tempo real garantido
             calc_volumes_qtd = 0
             calc_peso_real = 0.0
             calc_volume_m3 = 0.0
+            tipos_materiais_carga = ["Outro"]
 
             if df_volumes_editado is not None and not df_volumes_editado.empty:
-                # Extração direta usando vetorização com fallback seguro:
-                qtd_col = "Qtd" if "Qtd" in df_volumes_editado.columns else df_volumes_editado.columns[0]
-                peso_col = "Peso Total (kg)" if "Peso Total (kg)" in df_volumes_editado.columns else (df_volumes_editado.columns[4] if len(df_volumes_editado.columns) > 4 else None)
-                
                 try:
-                    calc_volumes_qtd = int(df_volumes_editado[qtd_col].apply(safe_float).sum())
-                except:
-                    pass
-                    
-                try:
-                    if peso_col:
-                        calc_peso_real = float(df_volumes_editado[peso_col].apply(safe_float).sum())
-                except:
-                    pass
+                    df_calc = df_volumes_editado.copy().reset_index(drop=True)
 
-                for _, row in df_volumes_editado.iterrows():
-                    try:
-                        _q = safe_int(row.get(qtd_col)) if not pd.isna(row.get(qtd_col)) else safe_int(row.iloc[0] if len(row) > 0 else 0)
-                        _a = safe_float(row.get("Alt (cm)")) if not pd.isna(row.get("Alt (cm)")) else safe_float(row.iloc[1] if len(row) > 1 else 0)
-                        _l = safe_float(row.get("Larg (cm)")) if not pd.isna(row.get("Larg (cm)")) else safe_float(row.iloc[2] if len(row) > 2 else 0)
-                        _c = safe_float(row.get("Comp (cm)")) if not pd.isna(row.get("Comp (cm)")) else safe_float(row.iloc[3] if len(row) > 3 else 0)
-                        
-                        calc_volume_m3 += (_q * (_a * _l * _c)) / 1000000.0
-                    except Exception as e:
-                        import logging
-                        logging.warning(f"Erro ao processar volume (cubagem): {e}")
+                    for c in cols_editor:
+                        if c not in df_calc.columns:
+                            if c == "Tipo":
+                                df_calc[c] = "Outro"
+                            else:
+                                df_calc[c] = 0.0
+
+                    df_calc["Qtd"] = df_calc["Qtd"].apply(safe_int)
+                    df_calc["Alt (cm)"] = df_calc["Alt (cm)"].apply(safe_float)
+                    df_calc["Larg (cm)"] = df_calc["Larg (cm)"].apply(safe_float)
+                    df_calc["Comp (cm)"] = df_calc["Comp (cm)"].apply(safe_float)
+                    df_calc["Peso Total (kg)"] = df_calc["Peso Total (kg)"].apply(safe_float)
+
+                    df_calc["Tipo"] = df_calc["Tipo"].fillna("Outro").astype(str).str.strip()
+                    df_calc.loc[df_calc["Tipo"] == "", "Tipo"] = "Outro"
+
+                    if "descricao" not in df_calc.columns:
+                        df_calc["descricao"] = ""
+
+                    # Campo de texto pequeno e opcional para linhas onde o Tipo for "Outro"
+                    linhas_outro = [i for i, r in df_calc.iterrows() if str(r.get("Tipo", "")).strip() == "Outro"]
+                    if linhas_outro:
+                        cols_outro = st.columns(min(len(linhas_outro), 3))
+                        for idx_pos, idx_linha in enumerate(linhas_outro):
+                            with cols_outro[idx_pos % len(cols_outro)]:
+                                label_desc = f"Descrição do material — Linha {idx_linha + 1} (Outro)" if len(df_calc) > 1 else "Descrição do material (Outro)"
+                                key_desc = f"desc_outro_linha_{idx_linha}"
+                                
+                                val_desc_prev = ""
+                                if key_desc in st.session_state:
+                                    val_desc_prev = str(st.session_state[key_desc])
+                                elif "volumes_data" in st.session_state and idx_linha < len(st.session_state.volumes_data):
+                                    val_desc_prev = str(st.session_state.volumes_data[idx_linha].get("descricao", ""))
+                                
+                                desc_input = st.text_input(
+                                    label_desc,
+                                    value=val_desc_prev,
+                                    key=key_desc,
+                                    placeholder="Ex: Equipamento, Peças, Acessórios (opcional)",
+                                    help="Campo opcional para detalhar o tipo de material Outro."
+                                )
+                                df_calc.at[idx_linha, "descricao"] = desc_input.strip()
+
+                    calc_volumes_qtd = int(df_calc["Qtd"].sum())
+                    calc_peso_real = float(df_calc["Peso Total (kg)"].sum())
+
+                    df_calc["volume_m3_linha"] = (
+                        df_calc["Qtd"] * 
+                        df_calc["Alt (cm)"] * 
+                        df_calc["Larg (cm)"] * 
+                        df_calc["Comp (cm)"]
+                    ) / 1000000.0
+                    
+                    calc_volume_m3 = float(df_calc["volume_m3_linha"].sum())
+
+                    # Sincroniza apenas o backup de sessão com os dados atuais editados.
+                    # NUNCA atualizamos o volumes_base aqui para não resetar o componente e perder o foco/dados ao usar o Tab.
+                    st.session_state.volumes_data = df_calc.drop(columns=["volume_m3_linha"], errors="ignore").to_dict(orient="records")
+                    
+                    tipos_materiais_carga = df_calc[df_calc["Qtd"] > 0]["Tipo"].dropna().unique().tolist()
+                    if not tipos_materiais_carga:
+                        tipos_materiais_carga = ["Outro"]
+
+                except Exception as e:
+                    import logging
+                    logging.warning(f"Erro na extração de volumes: {e}")
 
             fator_cubagem = 300
             calc_peso_cubado = calc_volume_m3 * fator_cubagem
@@ -1118,6 +1262,20 @@ if aba == "Nova Cotação":
                         cep_origem, cep_destino, peso_real_total, valor_nf, cubagem_lista,
                         cnpj_remetente, doc_destinatario, 1
                     )
+                
+                if DOMINIO_AGEX and USUARIO_AGEX:
+                    futures["agex"] = executor.submit(
+                        cotar_ssw_wsdl, "Agex", DOMINIO_AGEX, USUARIO_AGEX, SENHA_AGEX,
+                        cep_origem, cep_destino, peso_real_total, valor_nf, cubagem_lista,
+                        cnpj_remetente, doc_destinatario, 1
+                    )
+                
+                if DOMINIO_LOGBG and USUARIO_LOGBG:
+                    futures["logdi"] = executor.submit(
+                        cotar_ssw_wsdl, "Logdi", DOMINIO_LOGBG, USUARIO_LOGBG, SENHA_LOGBG,
+                        cep_origem, cep_destino, peso_real_total, valor_nf, cubagem_lista,
+                        cnpj_remetente, doc_destinatario, 1
+                    )
 
             # Processamento Braspress
             if "braspress" in futures:
@@ -1150,24 +1308,123 @@ if aba == "Nova Cotação":
                         r_coopex["Motivo"] = "Webservice SSW Confirmado"
                     else:
                         r_coopex = te.calcular_frete_estrito("COOPEX", peso_tarifado, peso_real_total, valor_nf, uf_dest, cidade_dest, cep_destino)
+                        if r_coopex.get("Valor Frete (R$)") is not None:
+                            r_coopex["is_estimativa"] = True
                 except Exception:
                     r_coopex = te.calcular_frete_estrito("COOPEX", peso_tarifado, peso_real_total, valor_nf, uf_dest, cidade_dest, cep_destino)
+                    if r_coopex.get("Valor Frete (R$)") is not None:
+                        r_coopex["is_estimativa"] = True
             else:
                 r_coopex = te.calcular_frete_estrito("COOPEX", peso_tarifado, peso_real_total, valor_nf, uf_dest, cidade_dest, cep_destino)
+                if r_coopex.get("Valor Frete (R$)") is not None:
+                    r_coopex["is_estimativa"] = True
+
+            # Processamento Agex
+            if "agex" in futures:
+                try:
+                    r_agex = futures["agex"].result(timeout=20)
+                    if r_agex.get("Valor Frete (R$)") is not None:
+                        r_agex["Atendida"] = True
+                        r_agex["Tags"] = ["PR", "SC", "RS", "SP", "MS"]
+                        r_agex["Base Tarifária"] = "Webservice SSW WSDL Oficial"
+                        r_agex["Motivo"] = "Webservice SSW Confirmado"
+                    else:
+                        r_agex = te.calcular_frete_estrito("AGEX", peso_tarifado, peso_real_total, valor_nf, uf_dest, cidade_dest, cep_destino)
+                        if r_agex.get("Valor Frete (R$)") is not None:
+                            r_agex["is_estimativa"] = True
+                except Exception:
+                    r_agex = te.calcular_frete_estrito("AGEX", peso_tarifado, peso_real_total, valor_nf, uf_dest, cidade_dest, cep_destino)
+                    if r_agex.get("Valor Frete (R$)") is not None:
+                        r_agex["is_estimativa"] = True
+            else:
+                r_agex = te.calcular_frete_estrito("AGEX", peso_tarifado, peso_real_total, valor_nf, uf_dest, cidade_dest, cep_destino)
+                if r_agex.get("Valor Frete (R$)") is not None:
+                    r_agex["is_estimativa"] = True
+
+            # Processamento Logdi
+            if "logdi" in futures:
+                try:
+                    r_logdi = futures["logdi"].result(timeout=20)
+                    if r_logdi.get("Valor Frete (R$)") is not None:
+                        r_logdi["Atendida"] = True
+                        r_logdi["Tags"] = ["AL", "BA", "CE", "MA", "PB", "PE", "PI", "RN", "SE"]
+                        r_logdi["Base Tarifária"] = "Webservice SSW WSDL Oficial"
+                        r_logdi["Motivo"] = "Webservice SSW Confirmado"
+                    else:
+                        r_logdi = te.calcular_frete_estrito("LOGDI", peso_tarifado, peso_real_total, valor_nf, uf_dest, cidade_dest, cep_destino)
+                        if r_logdi.get("Valor Frete (R$)") is not None:
+                            r_logdi["is_estimativa"] = True
+                except Exception:
+                    r_logdi = te.calcular_frete_estrito("LOGDI", peso_tarifado, peso_real_total, valor_nf, uf_dest, cidade_dest, cep_destino)
+                    if r_logdi.get("Valor Frete (R$)") is not None:
+                        r_logdi["is_estimativa"] = True
+            else:
+                r_logdi = te.calcular_frete_estrito("LOGDI", peso_tarifado, peso_real_total, valor_nf, uf_dest, cidade_dest, cep_destino)
+                if r_logdi.get("Valor Frete (R$)") is not None:
+                    r_logdi["is_estimativa"] = True
 
         # 2. Avaliação Rigorosa das 14 Demais Tabelas Contratuais Homologadas
         chaves_tabelas = [
             "PRINCESA", "ALFA", "TW", "ENVIA_RAPIDO", "GARCIA", "SUDOESTE",
-            "CARRION", "EXPRESSO_SAO_MIGUEL", "LOGDI", "OURO_NEGRO",
-            "RODONAVES", "TECMAR", "AGEX", "VIP", "ARAGAO"
+            "CARRION", "EXPRESSO_SAO_MIGUEL", "OURO_NEGRO",
+            "RODONAVES", "TECMAR", "VIP", "ARAGAO"
         ]
 
-        resultados_tabelas = [
-            te.calcular_frete_estrito(k, peso_tarifado, peso_real_total, valor_nf, uf_dest, cidade_dest, cep_destino)
-            for k in chaves_tabelas
-        ]
+        resultados_tabelas = []
+        for k in chaves_tabelas:
+            res = te.calcular_frete_estrito(k, peso_tarifado, peso_real_total, valor_nf, uf_dest, cidade_dest, cep_destino)
+            if k == "EXPRESSO_SAO_MIGUEL" and res.get("Valor Frete (R$)") is not None:
+                res["is_estimativa"] = True
+            resultados_tabelas.append(res)
 
-        resultados = [r_braspress, r_coopex] + resultados_tabelas
+        resultados = [r_braspress, r_coopex, r_agex, r_logdi] + resultados_tabelas
+
+        # Aplicar regras de restrição de material
+        resultados_filtrados = []
+        for r in resultados:
+            if not r.get("Atendida"):
+                resultados_filtrados.append(r)
+                continue
+            
+            transp_nome = str(r.get("Transportadora", "")).upper()
+            
+            # Não alterar Princesa dos Campos
+            if "PRINCESA" in transp_nome:
+                resultados_filtrados.append(r)
+                continue
+
+            chave_regr = None
+            for k in RESTRICOES_MATERIAIS.keys():
+                if k in transp_nome or transp_nome in k:
+                    chave_regr = k
+                    break
+            
+            excluir = False
+            precisa_confirmar = False
+            
+            for mat in tipos_materiais_carga:
+                if mat == "Outro":
+                    continue
+                    
+                aceite = "NÃO INFORMADO"
+                if chave_regr and mat in ["Caixa", "Pallet", "Bobina", "Saco"]:
+                    aceite = RESTRICOES_MATERIAIS[chave_regr].get(mat, "NÃO INFORMADO")
+                
+                if aceite == "NÃO LEVA":
+                    excluir = True
+                    break
+                elif aceite in ["CONSULTAR REGIAO", "NÃO INFORMADO"]:
+                    precisa_confirmar = True
+
+            if excluir:
+                continue # Transportadora excluída
+            
+            if precisa_confirmar:
+                r["Aviso_Material"] = "⚠️ Confirme se a transportadora transporta este material."
+
+            resultados_filtrados.append(r)
+        
+        resultados = resultados_filtrados
 
         # Salvar na sessão
         st.session_state.ultima_cotacao = {
@@ -1264,33 +1521,8 @@ if aba == "Nova Cotação":
             st.markdown(href_excel, unsafe_allow_html=True)
         with col_res_wa:
             if len(df_valid) > 0:
-                v_data = cot_info.get('volumes_data', [])
-                if v_data:
-                    dim_list = [f"{int(float(v.get('Comp (cm)', 0)))}x{int(float(v.get('Larg (cm)', 0)))}x{int(float(v.get('Alt (cm)', 0)))}" for v in v_data]
-                    dimensoes_resumidas = "\\n".join(dim_list)
-                else:
-                    dimensoes_resumidas = "N/A"
-                
                 melhor_op = df_valid.iloc[0]
-                
-                obs_text = f"\\n\\n*Observações:* {cot_info.get('obs')}" if cot_info.get('obs') else ""
-                msg_completa = (
-                    f"Olá!\\n"
-                    f"Por gentileza, peço a validação desta cotação de frete:\\n\\n"
-                    f"CNPJ remetente: {cot_info.get('remetente', 'N/A')}\\n"
-                    f"CEP remetente: {cot_info.get('origem_cep', 'N/A')}\\n"
-                    f"CNPJ destinatário: {cot_info.get('destinatario', 'N/A')}\\n"
-                    f"CEP destinatário: {cot_info.get('destino_cep', 'N/A')}\\n"
-                    f"Volumes: {cot_info.get('volumes_qtd', 0)}\\n"
-                    f"Medidas:\\n"
-                    f"{dimensoes_resumidas}\\n"
-                    f"Peso: {cot_info.get('peso', 0):.2f}kg\\n"
-                    f"Valor da NF: {utils.formatar_moeda(cot_info.get('valor_nf'))}\\n\\n"
-                    f"*Estimativa via Tabela :* *{formatar_moeda(melhor_op['Valor Frete (R$)'])}*\\n\\n"
-                    f"Pode confirmar se o valor bate com a tabela que temos com vocês?{obs_text}"
-                )
-                numero_wa = obter_numero_wa(melhor_op['Transportadora'])
-                link_wa_geral = f"https://wa.me/{numero_wa}?text={urllib.parse.quote(msg_completa).replace('%5Cn', '%0A')}"
+                link_wa_geral = gerar_link_wa(melhor_op['Transportadora'], cot_info, melhor_op['Valor Frete (R$)'])
                 href_wa = f'<a target="_blank" href="{link_wa_geral}" style="display:block; text-align:center; background-color:#10b981; color:#ffffff; border-radius:6px; font-weight:600; font-size:0.85rem; padding:11px 14px; text-decoration:none; box-shadow:0 1px 2px rgba(16,185,129,0.2); margin-bottom:16px; transition:all 0.2s;">Compartilhar Melhor Opção</a>'
                 st.markdown(href_wa, unsafe_allow_html=True)
 
@@ -1367,6 +1599,11 @@ if aba == "Nova Cotação":
                         else:
                             dica_html = ''
 
+                    aviso_mat_html = ""
+                    aviso_val = r_item.get("Aviso_Material")
+                    if pd.notna(aviso_val) and str(aviso_val).strip() != "":
+                        aviso_mat_html = f"<div style='margin-top:10px;padding:6px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;color:#92400e;font-size:0.75rem;font-weight:700;text-align:left;'>{aviso_val}</div>"
+
                     # Smart Tag "Mais Rápida"
                     smart_tag_html = ""
                     if is_mais_rapida:
@@ -1381,31 +1618,11 @@ if aba == "Nova Cotação":
                     tags_html = ""
 
                     # Link WhatsApp da opção
-                    v_data = cot_info.get('volumes_data', [])
-                    if v_data:
-                        dim_list = [f"{int(float(v.get('Comp (cm)', 0)))}x{int(float(v.get('Larg (cm)', 0)))}x{int(float(v.get('Alt (cm)', 0)))}" for v in v_data]
-                        dimensoes_resumidas = "\\n".join(dim_list)
-                    else:
-                        dimensoes_resumidas = "N/A"
+                    link_wa_card = gerar_link_wa(r_item['Transportadora'], cot_info, r_item['Valor Frete (R$)'])
 
-                    obs_text = f"\\n\\n*Observações:* {cot_info.get('obs')}" if cot_info.get('obs') else ""
-                    msg_card = (
-                        f"Olá!\\n"
-                        f"Por gentileza, peço a validação desta cotação de frete:\\n\\n"
-                        f"CNPJ remetente: {cot_info.get('remetente', 'N/A')}\\n"
-                        f"CEP remetente: {cot_info.get('origem_cep', 'N/A')}\\n"
-                        f"CNPJ destinatário: {cot_info.get('destinatario', 'N/A')}\\n"
-                        f"CEP destinatário: {cot_info.get('destino_cep', 'N/A')}\\n"
-                        f"Volumes: {cot_info.get('volumes_qtd', 0)}\\n"
-                        f"Medidas:\\n"
-                        f"{dimensoes_resumidas}\\n"
-                        f"Peso: {cot_info.get('peso', 0):.2f}kg\\n"
-                        f"Valor da NF: {utils.formatar_moeda(cot_info.get('valor_nf'))}\\n\\n"
-                        f"*Estimativa via Tabela :* *{formatar_moeda(r_item['Valor Frete (R$)'])}*\\n\\n"
-                        f"Pode confirmar se o valor bate com a tabela que temos com vocês?{obs_text}"
-                    )
-                    numero_wa = obter_numero_wa(r_item['Transportadora'])
-                    link_wa_card = f"https://wa.me/{numero_wa}?text={urllib.parse.quote(msg_card).replace('%5Cn', '%0A')}"
+                    estimativa_html = ""
+                    if r_item.get("is_estimativa"):
+                        estimativa_html = f"<div style='font-size:0.75rem;color:#b91c1c;font-weight:700;margin-bottom:8px;'>⚠️ Valor estimado</div>"
 
                     card_html = f"""
                     <div class="{card_class}" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.05); text-align:center; position:relative; overflow:hidden; margin-bottom:16px;">
@@ -1415,6 +1632,7 @@ if aba == "Nova Cotação":
                       <div style="margin-bottom:16px;">
                         {logo_html}
                       </div>
+                      {estimativa_html}
                       <div style="margin-bottom:20px;">
                         <div style="font-size:0.75rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:2px;">Custo Estimado</div>
                         <div style="font-size:2rem; font-weight:800; color:#0f172a; line-height:1.2;">
@@ -1431,6 +1649,7 @@ if aba == "Nova Cotação":
                           <span style="font-size:0.85rem; color:#0f172a; font-weight:700;">{r_item.get('Peso Tarifado', f"{cot_info.get('peso_tarifado', 0):.2f} kg")}</span>
                         </div>
                         {dica_html}
+                        {aviso_mat_html}
                       </div>
                       <a href="{link_wa_card}" target="_blank" style="display:block; background:#10b981; color:#ffffff; font-weight:600; font-size:0.85rem; padding:10px; border-radius:6px; text-decoration:none; transition:background 0.2s;">
                         Enviar Proposta
@@ -1458,41 +1677,15 @@ if aba == "Nova Cotação":
         columns_to_drop = [c for c in df_t.columns if "base" in c.lower() or "ordem" in c.lower()]
         df_t = df_t.drop(columns=columns_to_drop, errors='ignore')
 
-        def gerar_link_wa(row):
-            valor = formatar_moeda(row["Valor Frete (R$)"])
-            prazo_val = int(row["Prazo (Dias Úteis)"]) if pd.notna(row["Prazo (Dias Úteis)"]) else 0
-            prazo_str = f"{prazo_val} dias úteis" if prazo_val > 0 else "A confirmar"
-            tipo_str = row.get("Base Tarifária", "Tabela Contratual")
-            v_data = cot_info.get('volumes_data', [])
-            if v_data:
-                dim_list = [f"{int(float(v.get('Comp (cm)', 0)))}x{int(float(v.get('Larg (cm)', 0)))}x{int(float(v.get('Alt (cm)', 0)))}" for v in v_data]
-                dimensoes_resumidas = "\\n".join(dim_list)
-            else:
-                dimensoes_resumidas = "N/A"
+        def gerar_link_wa_row(row):
+            return gerar_link_wa(row["Transportadora"], cot_info, row["Valor Frete (R$)"])
 
-            obs_text = f"\n\n*Observações:* {cot_info.get('obs')}" if cot_info.get('obs') else ""
-            msg = (
-                f"Olá!\n"
-                f"Por gentileza, peço a validação desta cotação de frete:\n\n"
-                f"CNPJ remetente: {cot_info.get('remetente', 'N/A')}\n"
-                f"CEP remetente: {cot_info.get('origem_cep', 'N/A')}\n"
-                f"CNPJ destinatário: {cot_info.get('destinatario', 'N/A')}\n"
-                f"CEP destinatário: {cot_info.get('destino_cep', 'N/A')}\n"
-                f"Volumes: {cot_info.get('volumes_qtd', 0)}\n"
-                f"Medidas:\n"
-                f"{dimensoes_resumidas}\n"
-                f"Peso: {cot_info.get('peso', 0):.2f}kg\n"
-                f"Valor da NF: {utils.formatar_moeda(cot_info.get('valor_nf'))}\n\n"
-                f"*Estimativa via Tabela :* *{valor}*\n\n"
-                f"Pode confirmar se o valor bate com a tabela que temos com vocês?{obs_text}"
-            )
-            numero_wa = obter_numero_wa(row['Transportadora'])
-            return f"https://wa.me/{numero_wa}?text={urllib.parse.quote(msg).replace('%5Cn', '%0A')}"
+        df_t["Ação"] = df_t.apply(gerar_link_wa_row, axis=1)
 
-
-        df_t["Ação"] = df_t.apply(gerar_link_wa, axis=1)
+        cols_to_show = ["Transportadora", "Valor Frete (R$)", "Prazo", "Ação"]
+        
         st.dataframe(
-            df_t[["Transportadora", "Valor Frete (R$)", "Prazo", "Ação"]],
+            df_t[cols_to_show],
             use_container_width=True,
             hide_index=True,
             column_config={
@@ -1502,7 +1695,7 @@ if aba == "Nova Cotação":
                 "Ação": st.column_config.LinkColumn("WhatsApp", display_text="Enviar Proposta", width="small")
             },
         )
-
+        
         # Seção de Transportadoras Não Atendidas / Indisponíveis (Tolerância Zero a Falsos Positivos)
         if opcoes_indisponiveis:
             st.write("")
@@ -1869,10 +2062,15 @@ elif aba == "Histórico de Cotações":
             
             # Restaurar volumes
             restored_volumes = dados.get("volumes_data", [])
-            st.session_state.volumes_base = pd.DataFrame(restored_volumes) if restored_volumes else pd.DataFrame([{"Qtd": 0, "Alt (cm)": 0.0, "Larg (cm)": 0.0, "Comp (cm)": 0.0, "Peso Total (kg)": 0.0}])
+            st.session_state.volumes_base = pd.DataFrame(restored_volumes) if restored_volumes else pd.DataFrame([{"Tipo": "Outro", "Qtd": 0, "Alt (cm)": 0.0, "Larg (cm)": 0.0, "Comp (cm)": 0.0, "Peso Total (kg)": 0.0}])
             st.session_state.volumes_data = restored_volumes
-            if "tabela_volumes_fixa" in st.session_state:
-                del st.session_state["tabela_volumes_fixa"]
+            for _i_res, _r_res in enumerate(restored_volumes):
+                if _r_res.get("descricao"):
+                    st.session_state[f"desc_outro_linha_{_i_res}"] = _r_res["descricao"]
+            st.session_state.editor_version = st.session_state.get("editor_version", 0) + 1
+            for k in list(st.session_state.keys()):
+                if k.startswith("tabela_volumes_fixa"):
+                    del st.session_state[k]
                 
             st.session_state.active_module = "Nova Cotação"
         del st.session_state.acao_retomar
@@ -2172,6 +2370,14 @@ div[data-testid="stDialog"] div[data-testid="column"]:nth-child(1) button p {
                             {f'<span style="color:#166534; font-size:12px; margin-left:8px;">| {d_aprov}</span>' if d_aprov else ''}
                         </div>"""
                 
+                # Vendedor (Admin only)
+                vendedor_str = ""
+                if u.get("role", "VENDEDOR") == "ADMIN":
+                    v_nome = item.get("vendedor_nome")
+                    if not v_nome:
+                        v_nome = "Não identificado"
+                    vendedor_str = f"<div style='font-size:13px; color:#475569; margin-top:2px; font-weight:600;'>Vendedor: <span style='font-weight:400;'>{v_nome}</span></div>"
+
                 st.html(
                     f"""
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
@@ -2180,6 +2386,7 @@ div[data-testid="stDialog"] div[data-testid="column"]:nth-child(1) button p {
                             <div translate='no' class='notranslate' style='font-size:14px; color:#0f172a; font-weight:600; margin-top:5px;'>{nome_display}</div>
                             <div style='font-size:13px; color:#475569; margin-top:2px;'>CNPJ: {doc_cli}</div>
                             <div style='font-size:13px; color:#475569; margin-top:2px;'>Destino: {destino_str}  |  Valor NF: {utils.formatar_moeda(valor_nf)}</div>
+                            {vendedor_str}
                             {aprovacao_html}
                         </div>
                         <div>

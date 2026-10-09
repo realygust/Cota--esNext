@@ -11,10 +11,10 @@ class TestTabelasEngine(unittest.TestCase):
         ok, msg = te.verificar_cobertura_estrita("PRINCESA", "SP", "sao paulo", "01000000")
         self.assertTrue(ok)
         
-        # Testa se Princesa cobre PR fora de Curitiba
+        # Testa se Princesa cobre PR fora de Curitiba (agora cobre todo o estado)
         ok, msg = te.verificar_cobertura_estrita("PRINCESA", "PR", "londrina", "86000000")
-        self.assertFalse(ok)
-        self.assertIn("tabela atende somente Curitiba", msg)
+        self.assertTrue(ok)
+        self.assertIn("Cobertura confirmada", msg)
         
         # Testa se Princesa cobre PR Curitiba
         ok, msg = te.verificar_cobertura_estrita("PRINCESA", "PR", "curitiba", "80000000")
