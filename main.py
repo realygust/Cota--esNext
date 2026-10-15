@@ -43,49 +43,8 @@ gerar_link_wa = getattr(whatsapp_generator, "gerar_link_wa", None)
 # Alias the dictionary constants in case they are used in main
 CONTATOS_TRANSPORTADORAS = getattr(whatsapp_generator, "CONTATOS_TRANSPORTADORAS", {})
 
-RESTRICOES_MATERIAIS = {
-    "AGEX": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "ALFA": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "ANDORINHA": {"Pallet": "NÃO LEVA", "Bobina": "NÃO LEVA"},
-    "ATUAL CARGAS": {"Pallet": "CONSULTAR REGIAO", "Bobina": "CONSULTAR REGIAO"},
-    "AVIÕES TRANSPORTES": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "BASSO": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "BERTOLINI": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "BRASPRESS": {"Pallet": "LEVA", "Bobina": "NÃO LEVA"},
-    "BRASUL": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "CARRION": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "CARVALIMA": {"Pallet": "NÃO LEVA", "Bobina": "NÃO LEVA"},
-    "CONECTLOG": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "COOPEX": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "CORREIOS": {"Pallet": "NÃO LEVA", "Bobina": "NÃO LEVA"},
-    "CRUZEIRO DO SUL": {"Pallet": "NÃO LEVA", "Bobina": "NÃO LEVA"},
-    "DESTAK": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "ENVIA RAPIDO": {"Pallet": "NÃO LEVA", "Bobina": "NÃO LEVA"},
-    "EUCATUR": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "EXCELLENCE": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "EXPRESSO SÃO MIGUEL": {"Pallet": "NÃO LEVA", "Bobina": "NÃO LEVA"},
-    "FAST PÉROLA": {"Pallet": "NÃO LEVA", "Bobina": "NÃO LEVA"},
-    "GARCIA": {"Pallet": "NÃO LEVA", "Bobina": "NÃO LEVA"},
-    "GOL": {"Pallet": "NÃO LEVA", "Bobina": "NÃO LEVA"},
-    "LOGDI": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "MAEX": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "MENEGHIM": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "MIRA": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "MID": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "MMS": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "PATRUS": {"Pallet": "CONSULTAR REGIAO", "Bobina": "CONSULTAR REGIAO"},
-    "PLAV": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "PORTO 43": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "PRINCESA": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "REUNIDAS CARGAS": {"Pallet": "LEVA", "Bobina": "CONSULTAR REGIAO"},
-    "RICO": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "RODONAVES": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "SUDOESTE": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "TECMAR": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "TRANSLOVATO": {"Pallet": "LEVA", "Bobina": "LEVA"},
-    "VIP": {"Pallet": "NÃO LEVA", "Bobina": "NÃO LEVA"},
-    "RPA CARGO": {"Pallet": "LEVA", "Bobina": "LEVA"},
-}
+import restricoes_material
+RESTRICOES_MATERIAIS = restricoes_material.RESTRICOES_MATERIAIS
 import base64
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -760,7 +719,8 @@ if aba == "Nova Cotação":
             if cep_origem:
                 cep_origem = cep_origem.replace('-', '').replace(' ', '')
                 
-            res_cep_o = buscar_cep(cep_origem)
+            with st.spinner("Consultando CEP..."):
+                res_cep_o = buscar_cep(cep_origem)
             if res_cep_o:
                 info_o = {
                     "ok": True,
@@ -797,7 +757,8 @@ if aba == "Nova Cotação":
         doc_limpo = limpar_documento(doc_destinatario)
 
         if len(doc_limpo) == 14:
-            info_emp_dest = buscar_empresa_cnpj(doc_limpo)
+            with st.spinner("Consultando dados do CNPJ..."):
+                info_emp_dest = buscar_empresa_cnpj(doc_limpo)
             
 
             
@@ -841,7 +802,8 @@ if aba == "Nova Cotação":
         if cep_destino:
             cep_destino = cep_destino.replace('-', '').replace(' ', '')
 
-        res_cep = buscar_cep(cep_destino)
+        with st.spinner("Consultando CEP..."):
+            res_cep, status_cep = utils.consultar_cep(cep_destino)
         if res_cep:
             info_d = {
                 "ok": True,
@@ -853,7 +815,10 @@ if aba == "Nova Cotação":
             }
         else:
             if cep_destino and len(cep_destino) == 8:
-                st.warning("CEP não localizado na base dos Correios. Por favor, insira a UF e Cidade manualmente abaixo para prosseguir com a cotação.")
+                if status_cep == utils.CEP_INDISPONIVEL:
+                    st.warning("O serviço de consulta de CEP está temporariamente indisponível, então não foi possível confirmar este CEP. Isso não impede a cotação: informe a UF e a Cidade manualmente abaixo (ou digite o CEP novamente em instantes para tentar de novo).")
+                else:
+                    st.warning("CEP não localizado na base dos Correios. Por favor, insira a UF e Cidade manualmente abaixo para prosseguir com a cotação.")
                 c1_man, c2_man = st.columns([1, 3])
                 with c1_man:
                     man_uf = st.text_input("UF (ex: SP)", key="man_uf", max_chars=2).upper()
@@ -976,21 +941,8 @@ if aba == "Nova Cotação":
                 },
             )
 
-            def safe_float(val):
-                if pd.isna(val) or val is None:
-                    return 0.0
-                if isinstance(val, (int, float)):
-                    return float(val)
-                s = str(val).strip().replace(',', '.')
-                if not s:
-                    return 0.0
-                try:
-                    return float(s)
-                except:
-                    return 0.0
-
-            def safe_int(val):
-                return int(safe_float(val))
+            safe_float = utils.safe_float
+            safe_int = utils.safe_int
 
             calc_volumes_qtd = 0
             calc_peso_real = 0.0
@@ -999,23 +951,8 @@ if aba == "Nova Cotação":
 
             if df_volumes_editado is not None and not df_volumes_editado.empty:
                 try:
-                    df_calc = df_volumes_editado.copy().reset_index(drop=True)
-
-                    for c in cols_editor:
-                        if c not in df_calc.columns:
-                            if c == "Tipo":
-                                df_calc[c] = "Outro"
-                            else:
-                                df_calc[c] = 0.0
-
-                    df_calc["Qtd"] = df_calc["Qtd"].apply(safe_int)
-                    df_calc["Alt (cm)"] = df_calc["Alt (cm)"].apply(safe_float)
-                    df_calc["Larg (cm)"] = df_calc["Larg (cm)"].apply(safe_float)
-                    df_calc["Comp (cm)"] = df_calc["Comp (cm)"].apply(safe_float)
-                    df_calc["Peso Total (kg)"] = df_calc["Peso Total (kg)"].apply(safe_float)
-
-                    df_calc["Tipo"] = df_calc["Tipo"].fillna("Outro").astype(str).str.strip()
-                    df_calc.loc[df_calc["Tipo"] == "", "Tipo"] = "Outro"
+                    # Fonte única: DataFrame editado -> sanitizado -> totais (todos os cartões usam o mesmo resumo)
+                    df_calc = utils.sanear_volumes(df_volumes_editado)
 
                     if "descricao" not in df_calc.columns:
                         df_calc["descricao"] = ""
@@ -1023,10 +960,11 @@ if aba == "Nova Cotação":
                     # Campo de texto pequeno e opcional para linhas onde o Tipo for "Outro"
                     linhas_outro = [i for i, r in df_calc.iterrows() if str(r.get("Tipo", "")).strip() == "Outro"]
                     if linhas_outro:
+                        st.caption("Descreva a embalagem ou o formato do volume, não o produto dentro dele. Produtos acondicionados em caixas devem usar o tipo Caixa.")
                         cols_outro = st.columns(min(len(linhas_outro), 3))
                         for idx_pos, idx_linha in enumerate(linhas_outro):
                             with cols_outro[idx_pos % len(cols_outro)]:
-                                label_desc = f"Descrição do material — Linha {idx_linha + 1} (Outro)" if len(df_calc) > 1 else "Descrição do material (Outro)"
+                                label_desc = f"Descrição do tipo de volume (opcional) — Linha {idx_linha + 1}" if len(df_calc) > 1 else "Descrição do tipo de volume (opcional)"
                                 key_desc = f"desc_outro_linha_{idx_linha}"
                                 
                                 val_desc_prev = ""
@@ -1039,36 +977,26 @@ if aba == "Nova Cotação":
                                     label_desc,
                                     value=val_desc_prev,
                                     key=key_desc,
-                                    placeholder="Ex: Equipamento, Peças, Acessórios (opcional)",
-                                    help="Campo opcional para detalhar o tipo de material Outro."
+                                    placeholder="Ex.: engradado, tambor ou embalagem especial",
                                 )
                                 df_calc.at[idx_linha, "descricao"] = desc_input.strip()
 
-                    calc_volumes_qtd = int(df_calc["Qtd"].sum())
-                    calc_peso_real = float(df_calc["Peso Total (kg)"].sum())
-
-                    df_calc["volume_m3_linha"] = (
-                        df_calc["Qtd"] * 
-                        df_calc["Alt (cm)"] * 
-                        df_calc["Larg (cm)"] * 
-                        df_calc["Comp (cm)"]
-                    ) / 1000000.0
-                    
-                    calc_volume_m3 = float(df_calc["volume_m3_linha"].sum())
+                    resumo_volumes = utils.resumir_volumes(df_calc)
+                    calc_volumes_qtd = resumo_volumes["qtd"]
+                    calc_peso_real = resumo_volumes["peso_real"]
+                    calc_volume_m3 = resumo_volumes["volume_m3"]
 
                     # Sincroniza apenas o backup de sessão com os dados atuais editados.
                     # NUNCA atualizamos o volumes_base aqui para não resetar o componente e perder o foco/dados ao usar o Tab.
-                    st.session_state.volumes_data = df_calc.drop(columns=["volume_m3_linha"], errors="ignore").to_dict(orient="records")
+                    st.session_state.volumes_data = df_calc.to_dict(orient="records")
                     
-                    tipos_materiais_carga = df_calc[df_calc["Qtd"] > 0]["Tipo"].dropna().unique().tolist()
-                    if not tipos_materiais_carga:
-                        tipos_materiais_carga = ["Outro"]
+                    tipos_materiais_carga = resumo_volumes["tipos"]
 
                 except Exception as e:
                     import logging
                     logging.warning(f"Erro na extração de volumes: {e}")
 
-            fator_cubagem = 300
+            fator_cubagem = utils.FATOR_CUBAGEM
             calc_peso_cubado = calc_volume_m3 * fator_cubagem
             calc_peso_tarifado = max(calc_peso_real, calc_peso_cubado)
             calc_e_cubado = calc_peso_cubado > calc_peso_real
@@ -1379,52 +1307,8 @@ if aba == "Nova Cotação":
 
         resultados = [r_braspress, r_coopex, r_agex, r_logdi] + resultados_tabelas
 
-        # Aplicar regras de restrição de material
-        resultados_filtrados = []
-        for r in resultados:
-            if not r.get("Atendida"):
-                resultados_filtrados.append(r)
-                continue
-            
-            transp_nome = str(r.get("Transportadora", "")).upper()
-            
-            # Não alterar Princesa dos Campos
-            if "PRINCESA" in transp_nome:
-                resultados_filtrados.append(r)
-                continue
-
-            chave_regr = None
-            for k in RESTRICOES_MATERIAIS.keys():
-                if k in transp_nome or transp_nome in k:
-                    chave_regr = k
-                    break
-            
-            excluir = False
-            precisa_confirmar = False
-            
-            for mat in tipos_materiais_carga:
-                if mat == "Outro":
-                    continue
-                    
-                aceite = "NÃO INFORMADO"
-                if chave_regr and mat in ["Caixa", "Pallet", "Bobina", "Saco"]:
-                    aceite = RESTRICOES_MATERIAIS[chave_regr].get(mat, "NÃO INFORMADO")
-                
-                if aceite == "NÃO LEVA":
-                    excluir = True
-                    break
-                elif aceite in ["CONSULTAR REGIAO", "NÃO INFORMADO"]:
-                    precisa_confirmar = True
-
-            if excluir:
-                continue # Transportadora excluída
-            
-            if precisa_confirmar:
-                r["Aviso_Material"] = "⚠️ Confirme se a transportadora transporta este material."
-
-            resultados_filtrados.append(r)
-        
-        resultados = resultados_filtrados
+        # Aplicar regras de restrição de material (regra única: restricoes_material)
+        resultados = restricoes_material.aplicar_restricoes_material(resultados, tipos_materiais_carga)
 
         # Salvar na sessão
         st.session_state.ultima_cotacao = {

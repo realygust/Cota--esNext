@@ -137,7 +137,7 @@ def cotar_braspress(cep_origem, cep_destino, peso, valor_nf, cubagem_lista, cnpj
         "Cubagem": cubagem_lista,
     }
     try:
-        response = requests.post(url, json=payload, headers=headers, timeout=18)
+        response = requests.post(url, json=payload, headers=headers, timeout=(5, 18))
         if response.status_code in [200, 201]:
             dados = response.json()
             prazo_dias = (
@@ -337,7 +337,7 @@ def cotar_ssw_wsdl(
     for pagador_atual in tentativas:
         envelope = montar_envelope(pagador_atual)
         try:
-            resp = requests.post(url, data=envelope.encode("utf-8"), headers=headers, timeout=14)
+            resp = requests.post(url, data=envelope.encode("utf-8"), headers=headers, timeout=(5, 14))
             if resp.status_code >= 500:
                 ultimo_erro = f"HTTP {resp.status_code}"
                 continue
