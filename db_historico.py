@@ -5,6 +5,8 @@ import json
 import os
 import uuid
 import hashlib
+import time
+import threading
 from datetime import datetime, timedelta
 import streamlit as st
 
@@ -15,6 +17,7 @@ try:
     HAS_POSTGRES = True
 except ImportError:
     HAS_POSTGRES = False
+    RealDictCursor = None
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "db", "historico.db")
 JSON_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "historico_cotacoes.json")
@@ -24,6 +27,8 @@ def get_db_config():
     if not url and "database" in st.secrets and "url" in st.secrets["database"]:
         url = st.secrets["database"]["url"]
         
+    if url:
+        url = url.strip()
     if url and url.startswith("postgres"):
         if not HAS_POSTGRES:
             st.error("psycopg2-binary não está instalado, mas um URL do Postgres foi fornecido.")
@@ -32,18 +37,105 @@ def get_db_config():
         
     return {"type": "sqlite", "path": DB_PATH}
 
+_pg_pool = None
+_pg_pool_lock = threading.Lock()
+_pg_pool_url = None
+
 @st.cache_resource
-def get_postgres_pool(url):
+def _get_st_postgres_pool(url):
     # Utilizamos minconn=1 e maxconn=5.
-    # 5 conexões são conservadoras e suficientes para os ~30 vendedores, 
+    # 5 conexões são conservadoras e suficientes para os vendedores,
     # pois a conexão só é mantida pela duração exata da query.
     return psycopg2.pool.ThreadedConnectionPool(1, 5, dsn=url)
+
+def get_postgres_pool(url):
+    global _pg_pool, _pg_pool_url
+    if _pg_pool is not None and _pg_pool_url == url:
+        try:
+            if not getattr(_pg_pool, "closed", False):
+                return _pg_pool
+        except Exception:
+            pass
+
+    with _pg_pool_lock:
+        if _pg_pool is not None and _pg_pool_url == url:
+            try:
+                if not getattr(_pg_pool, "closed", False):
+                    return _pg_pool
+            except Exception:
+                pass
+        try:
+            pool_inst = _get_st_postgres_pool(url)
+        except Exception:
+            pool_inst = psycopg2.pool.ThreadedConnectionPool(1, 5, dsn=url)
+        _pg_pool = pool_inst
+        _pg_pool_url = url
+        return _pg_pool
+
+def reset_postgres_pool():
+    """Fecha e reinicia a instância do pool (útil para testes e reconexões)."""
+    global _pg_pool, _pg_pool_url
+    with _pg_pool_lock:
+        if _pg_pool is not None:
+            try:
+                _pg_pool.closeall()
+            except Exception:
+                pass
+            _pg_pool = None
+            _pg_pool_url = None
+
+def _acquire_connection(pg_pool, timeout=15.0):
+    """
+    Obtém uma conexão do pool com espera/retry em caso de esgotamento temporário
+    por concorrência, e valida se a conexão não está encerrada.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            conn = pg_pool.getconn()
+        except Exception as e:
+            err_msg = str(e).lower()
+            if "exhausted" in err_msg and time.monotonic() < deadline:
+                time.sleep(0.05)
+                continue
+            raise
+
+        if getattr(conn, "closed", 0) != 0:
+            try:
+                pg_pool.putconn(conn, close=True)
+            except Exception:
+                pass
+            if time.monotonic() < deadline:
+                continue
+            raise psycopg2.OperationalError("Conexão PostgreSQL retornada do pool já estava encerrada.")
+
+        return conn
+
+def release_connection(conn, pg_pool=None, is_broken=False):
+    """Devolve a conexão exatamente uma vez ao pool ou fecha se for SQLite."""
+    if conn is None:
+        return
+    if pg_pool is not None:
+        should_close = is_broken or getattr(conn, "closed", 0) != 0
+        try:
+            pg_pool.putconn(conn, close=should_close)
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    else:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 def get_connection():
     config = get_db_config()
     if config["type"] == "postgres":
         pg_pool = get_postgres_pool(config["url"])
-        return pg_pool.getconn(), pg_pool
+        conn = _acquire_connection(pg_pool)
+        return conn, pg_pool
     else:
         diretorio = os.path.dirname(config["path"])
         if diretorio:
@@ -55,14 +147,19 @@ def get_connection():
 def execute_query(query, params=None, fetch=False, fetchone=False, commit=True):
     config = get_db_config()
     conn, pg_pool = get_connection()
+    cursor = None
+    is_broken = False
     
-    if config["type"] == "postgres":
-        query = query.replace("?", "%s")
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-    else:
-        cursor = conn.cursor()
-        
     try:
+        if config["type"] == "postgres":
+            query = query.replace("?", "%s")
+            if RealDictCursor is not None:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+            else:
+                cursor = conn.cursor()
+        else:
+            cursor = conn.cursor()
+
         if params:
             cursor.execute(query, params)
         else:
@@ -71,18 +168,41 @@ def execute_query(query, params=None, fetch=False, fetchone=False, commit=True):
         if commit:
             conn.commit()
             
+        result = None
         if fetchone:
             row = cursor.fetchone()
-            return dict(row) if row else None
-        if fetch:
+            result = dict(row) if row else None
+        elif fetch:
             rows = cursor.fetchall()
-            return [dict(row) for row in rows]
-    finally:
-        cursor.close()
+            result = [dict(row) for row in rows]
+
+        # Em PostgreSQL, para consultas somente de leitura (sem commit), faz rollback
+        # para encerrar o bloco de transação aberto e garantir estado IDLE no pool.
+        if config["type"] == "postgres" and not commit:
+            try:
+                conn.rollback()
+            except Exception:
+                is_broken = True
+
+        return result
+    except Exception as exc:
         if config["type"] == "postgres":
-            pg_pool.putconn(conn)
-        else:
-            conn.close()
+            err_name = type(exc).__name__.lower()
+            err_str = str(exc).lower()
+            if "operational" in err_name or "interface" in err_name or "closed" in err_str or "terminat" in err_str:
+                is_broken = True
+            try:
+                conn.rollback()
+            except Exception:
+                is_broken = True
+        raise exc
+    finally:
+        if cursor is not None:
+            try:
+                cursor.close()
+            except Exception:
+                pass
+        release_connection(conn, pg_pool, is_broken=is_broken)
 
 def hash_password(password: str, salt: bytes = None):
     if salt is None:
@@ -131,17 +251,23 @@ def init_db():
     """)
 
 
-    
-    try:
-        execute_query("ALTER TABLE usuarios ADD COLUMN session_token " + text_type)
-        execute_query("ALTER TABLE usuarios ADD COLUMN session_expires_at " + datetime_type)
-    except Exception:
-        pass
-
-    try:
-        execute_query("ALTER TABLE cotacoes ADD COLUMN approved_by " + text_type)
-    except Exception:
-        pass
+    if config["type"] == "postgres":
+        execute_query("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS session_token TEXT")
+        execute_query("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS session_expires_at TIMESTAMP")
+        execute_query("ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS approved_by TEXT")
+    else:
+        try:
+            execute_query("ALTER TABLE usuarios ADD COLUMN session_token " + text_type)
+        except Exception:
+            pass
+        try:
+            execute_query("ALTER TABLE usuarios ADD COLUMN session_expires_at " + datetime_type)
+        except Exception:
+            pass
+        try:
+            execute_query("ALTER TABLE cotacoes ADD COLUMN approved_by " + text_type)
+        except Exception:
+            pass
 
     execute_query(f"""
         CREATE TABLE IF NOT EXISTS cotacoes (
@@ -189,9 +315,7 @@ def init_db():
         if not any(c["name"] == "owner_user_id" for c in cols):
             execute_query("ALTER TABLE cotacoes ADD COLUMN owner_user_id TEXT")
     else:
-        cols = execute_query("SELECT column_name FROM information_schema.columns WHERE table_name='cotacoes'", fetch=True)
-        if not any(c["column_name"] == "owner_user_id" for c in cols):
-            execute_query("ALTER TABLE cotacoes ADD COLUMN owner_user_id TEXT")
+        execute_query("ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS owner_user_id TEXT")
 
     # Create default admin if not exists
     users_count = execute_query("SELECT COUNT(*) as c FROM usuarios", fetchone=True)
